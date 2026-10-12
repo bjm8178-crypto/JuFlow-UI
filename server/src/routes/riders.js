@@ -49,16 +49,6 @@ export function createRidersRouter({ database = getDb, transaction = withTransac
     try { res.json(riderProfile(await ownRider(database(), req.user.id))); }
     catch (error) { failure(error, res); }
   });
-  router.get('/me/deliveries', auth, requireRole('rider'), async (req, res) => {
-    try {
-      const db = database();
-      const rider = await ownRider(db, req.user.id);
-      const deliveries = await db.collection('deliveries').find({ rider_id: rider._id }, {
-        projection: { _id: 1, order_id: 1, rider_id: 1, status: 1, version: 1, assigned_at: 1, updated_at: 1, created_at: 1, cashier_confirmation: 1 }
-      }).sort({ updated_at: -1 }).toArray();
-      res.json(deliveries);
-    } catch (error) { failure(error, res); }
-  });
   router.post('/me/location', auth, requireRole('rider'), async (req, res) => {
     try {
       const location = validatedLocation(req.body);
@@ -92,6 +82,9 @@ export function createRidersRouter({ database = getDb, transaction = withTransac
       if (!rider) return res.status(404).json({ error: 'rider_not_found' });
       res.json(req.user.role_name === 'admin' ? rider : riderProfile(rider));
     } catch (error) { failure(error, res); }
+  });
+  router.post('/', auth, requireRole('admin'), (req, res) => {
+    res.status(409).json({ error: 'single_rider', message: 'The single rider is managed through bootstrap' });
   });
   for (const method of ['post', 'patch', 'delete']) router[method](method === 'post' ? '/' : '/:id', auth, requireRole('admin'), async (req, res) => {
     try {

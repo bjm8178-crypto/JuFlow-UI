@@ -33,8 +33,12 @@ describe('API surface (no database needed)', () => {
   });
 
   it('protected routes require a session', async () => {
-    for (const path of ['/api/users', '/api/orders', '/api/customers', '/api/sales/summary', '/api/deliveries', '/api/riders', '/api/menu/today', '/api/products']) {
+    for (const path of ['/api/users', '/api/orders', '/api/customers', '/api/sales/summary', '/api/sales/today', '/api/deliveries', '/api/riders', '/api/menu/today', '/api/products']) {
       assert.equal((await json(path)).status, 401, path);
+    }
+    for (const path of ['/api/notifications', '/api/sales/today/list']) assert.equal((await json(path)).status, 401, path);
+    for (const path of [`/api/orders/${'a'.repeat(24)}/status`, `/api/sales/${'a'.repeat(24)}/refund`]) {
+      assert.equal((await json(path, { method: 'POST', body: '{}' })).status, 401, path);
     }
   });
 

@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const source = await readFile(new URL('../workflow.js', import.meta.url), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const customer = { _id: 'customer-1', name: 'Customer', phone: '123', address: 'Doorstep', lat: null, lng: null };
-const order = { _id: 'order-1', order_number: 'JU-1001', customer_id: customer._id, customer, created_at: '2026-10-12T00:00:00Z', status: 'ready', version: 3, items: [{ name: 'Meal', quantity: 2, price_centavos: 15000 }], fee_centavos: 1000, total_centavos: 31000, payment_method: 'gcash' };
+const order = { _id: 'order-1', order_number: 'JU-1001', customer_id: customer._id, customer, created_at: '2026-10-12T00:00:00Z', status: 'on_the_way', version: 3, items: [{ name: 'Meal', quantity: 2, price_centavos: 15000 }], fee_centavos: 1000, total_centavos: 31000, payment_method: 'gcash' };
 
 function fixture(page = 'customers', request = async endpoint => endpoint === '/customers' ? [customer] : []) {
   const nodes = new Map();
@@ -35,7 +35,7 @@ function fixture(page = 'customers', request = async endpoint => endpoint === '/
       return { className: '', innerHTML: '', querySelector() { return {}; }, querySelectorAll() { return inputs; }, remove() {} };
     }
   };
-  vm.runInNewContext(source, { window, document, JuAPI: { async request(endpoint, options) { calls.push({ endpoint, options, body: options?.body ? JSON.parse(options.body) : undefined }); return request(endpoint, options); } }, JuStore: { escape: value => String(value ?? ''), money: value => 'PHP ' + value / 100, read() { throw Error('Business storage forbidden'); }, save() { throw Error('Business storage forbidden'); } }, crypto: { randomUUID: () => '8af2bcb0-0000-4000-8000-000000000001' }, URL });
+  vm.runInNewContext(source, { window, document, JuAPI: { async request(endpoint, options) { calls.push({ endpoint, options, body: options?.body ? JSON.parse(options.body) : undefined }); return request(endpoint, options); } }, JuStore: { escape: value => String(value ?? ''), money: value => 'PHP ' + value / 100, read() { throw Error('Business storage forbidden'); }, save() { throw Error('Business storage forbidden'); } }, setInterval() { return 0; }, crypto: { randomUUID: () => '8af2bcb0-0000-4000-8000-000000000001' }, URL });
   return { node, calls, mapCalls, window, resolveAuth, async ready() { resolveAuth({ role_name: 'admin' }); await tick(); await tick(); }, async submit(id) { node(id).onsubmit({ preventDefault() {}, currentTarget: node(id) }); await tick(); await tick(); } };
 }
 
@@ -123,7 +123,7 @@ test('history outage is distinguishable from empty history and can be retried', 
   assert.doesNotMatch(app.node('customer-profile').innerHTML, /No orders yet/);
   unavailable = false; await app.node('retry-history').onclick();
   assert.match(app.node('customer-profile').innerHTML, /JU-1001/);
-  assert.match(app.node('customer-profile').innerHTML, /Ready for pickup/);
+  assert.match(app.node('customer-profile').innerHTML, /On the way/);
 });
 
 test('customer errors remain visible and photo data is never included in customer JSON', async () => {
@@ -145,23 +145,16 @@ test('customer errors remain visible and photo data is never included in custome
   assert.match(app.node('customer-form-error').textContent, /details saved.*photo was not confirmed/);
 });
 
-test('orders use linked active riders and failed versioned assignment restores selection', async () => {
+test('admin orders page shows the three-step status and never offers rider assignment', async () => {
   const app = fixture('orders', async endpoint => {
-    if (endpoint.startsWith('/orders?')) return [order];
-    if (endpoint === '/riders') return [{ _id: 'rider-1', full_name: 'Real Rider', user_id: 'user-1', is_active: true }, { _id: 'inactive', full_name: 'Inactive', user_id: 'user-2', is_active: false }, { _id: 'unlinked', full_name: 'Unlinked', is_active: true }];
-    throw Error('Version conflict');
+    if (endpoint.startsWith('/orders?')) return [order, { ...order, _id: 'order-2', order_number: 'JU-1002', status: 'preparing' }, { ...order, _id: 'order-3', order_number: 'JU-1003', status: 'delivered' }];
+    throw Error('Unexpected request ' + endpoint);
   });
   await app.ready();
-  assert.match(app.node('order-list').innerHTML, /Real Rider/);
-  assert.doesNotMatch(app.node('order-list').innerHTML, /Inactive|Unlinked|Juan Reyes/);
-  const select = { dataset: { rider: order._id }, value: 'rider-1', disabled: false };
-  app.node('assignment-error').dataset.orderError = order._id;
-  app.node('order-list').onchange({ target: select }); await tick(); await tick();
-  const assignment = app.calls.find(call => call.endpoint.endsWith('/actions'));
-  assert.equal(assignment.body.action, 'assign'); assert.equal(assignment.body.rider_id, 'rider-1'); assert.equal(assignment.body.version, 3); assert.match(assignment.body.event_id, /^[a-f0-9-]{36}$/);
-  assert.equal(select.value, ''); assert.equal(select.disabled, false);
-  assert.match(app.node('assignment-error').textContent, /Version conflict/);
-  assert.doesNotMatch(app.node('workflow-status').textContent, /assignment saved/);
+  const html = app.node('order-list').innerHTML;
+  assert.match(html, /Preparing/); assert.match(html, /On the way/); assert.match(html, /Delivered/);
+  assert.doesNotMatch(html, /Assign rider|<select/);
+  assert.equal(app.calls.some(call => call.endpoint === '/riders' || call.endpoint.endsWith('/actions')), false);
 });
 
 test('owned pages load API before guard/controller and have reference/status controls', async () => {

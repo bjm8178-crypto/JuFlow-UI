@@ -1,5 +1,4 @@
-import { copyFile, lstat, mkdir, readdir, rm, readFile, cp } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { copyFile, lstat, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,33 +8,58 @@ export const FRONTEND_FILES = Object.freeze([
   'styles.css', 'app.js', 'auth-guard.js', 'api.js', 'store.js', 'workflow.js',
   'analytics.js', 'delivery-state.js', 'admin-deliveries.js',
   'map-config.js', 'landmarks.js', 'customer-map.js',
-  'cashier.html', 'cashier.js', 'rider.html', 'rider.js', 'outbox.js', 'users.html',
+  'users.html',
+  'cashier/index.html', 'cashier/app.js', 'cashier/boot.js', 'cashier/cashier.css',
+  'cashier/pos.js', 'cashier/orders.js', 'cashier/new-order.js', 'cashier/today.js',
+  'cashier/me.js', 'cashier/manifest.webmanifest', 'cashier/sw.js',
+  'rider/index.html', 'rider/app.js', 'rider/jobs.js', 'rider/history.js',
+  'rider/me.js', 'rider/manifest.webmanifest', 'rider/sw.js',
+  'shared/db.js', 'shared/network.js', 'shared/styles.css', 'shared/utils.js',
+  'icons/cashier-192.png', 'icons/cashier-512.png', 'icons/cashier-maskable-512.png',
+  'icons/cashier-template.svg', 'icons/rider-192.png', 'icons/rider-512.png',
+  'icons/rider-maskable-512.png', 'icons/rider-template.svg',
+  '.well-known/assetlinks.json',
 ]);
 
-export const FRONTEND_DIRS = Object.freeze(['cashier']);
+export const FRONTEND_DIRS = Object.freeze(['cashier', 'rider', 'shared', 'icons', '.well-known']);
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// Check every path component, not just the leaf: a linked app directory is unsafe too.
+export async function assertSafePath(root, filename, directory = false) {
+  const segments = filename.split('/');
+  if (filename.includes('\\') || segments.some((part) => !part || part === '.' || part === '..' || part.includes(':') || part.includes('\0'))) {
+    throw new Error(`Unsafe frontend path: ${filename}`);
+  }
+  let current = path.resolve(root);
+  let ancestor = current;
+  while (true) {
+    const stat = await lstat(ancestor);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Frontend root and parents must be regular directories');
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  for (const [index, segment] of segments.entries()) {
+    current = path.join(current, segment);
+    const stat = await lstat(current);
+    const isDirectory = index < segments.length - 1 || directory;
+    if (stat.isSymbolicLink() || !(isDirectory ? stat.isDirectory() : stat.isFile())) {
+      throw new Error(`Frontend input must be a regular ${isDirectory ? 'directory' : 'file'}: ${filename}`);
+    }
+  }
+  return current;
+}
 
 export async function buildFrontend(root = projectRoot) {
   // Validate all inputs before cleaning the generated directory. No globs or repo copy.
   for (const filename of FRONTEND_FILES) {
-    if (!(await lstat(path.join(root, filename))).isFile()) {
-      throw new Error(`Frontend input must be a regular file: ${filename}`);
-    }
+    await assertSafePath(root, filename);
   }
-
-  // If vercel.json is present, check the /api rewrite destination
-  const vercelPath = path.join(root, 'vercel.json');
-  if (existsSync(vercelPath)) {
-    try {
-      const config = JSON.parse(await readFile(vercelPath, 'utf8'));
-      const dest = config.rewrites?.find((r) => r.source === '/api/:path*')?.destination || '';
-      if (!dest.startsWith('https://') || !dest.includes('onrender.com') || dest.includes('your-render-app')) {
-        console.warn(`[WARN] vercel.json /api destination may not be configured properly: ${dest}`);
-      }
-    } catch {
-      // Ignore parse errors if any
-    }
+  try {
+    await assertSafePath(root, 'dist', true);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
   }
 
   const output = path.join(root, 'dist');
@@ -43,28 +67,37 @@ export async function buildFrontend(root = projectRoot) {
   await mkdir(output, { recursive: true });
 
   for (const filename of FRONTEND_FILES) {
-    await copyFile(path.join(root, filename), path.join(output, filename));
+    const input = await assertSafePath(root, filename);
+    await mkdir(path.dirname(path.join(output, filename)), { recursive: true });
+    await copyFile(input, path.join(output, filename));
   }
-
-  for (const dir of FRONTEND_DIRS) {
-    const dirPath = path.join(root, dir);
-    if (existsSync(dirPath)) {
-      await cp(dirPath, path.join(output, dir), { recursive: true });
-    }
-  }
-
+  await checkFrontend(root);
   return output;
 }
 
 export async function checkFrontend(root = projectRoot) {
-  const entries = await readdir(path.join(root, 'dist'), { withFileTypes: true });
-  const fileEntries = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
-  const nonFiles = entries.filter((entry) => !entry.isFile());
-  if (nonFiles.some((entry) => !FRONTEND_DIRS.includes(entry.name)) ||
-      JSON.stringify(fileEntries.sort()) !==
-      JSON.stringify([...FRONTEND_FILES].sort())) {
-    throw new Error('dist does not match the frontend allowlist');
+  await assertSafePath(root, 'dist', true);
+  const allowed = new Set(FRONTEND_FILES);
+  const directories = new Set(FRONTEND_FILES.flatMap((filename) => {
+    const parts = filename.split('/');
+    return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
+  }));
+  const found = new Set();
+  async function walk(prefix = '') {
+    for (const entry of await readdir(path.join(root, 'dist', prefix), { withFileTypes: true })) {
+      const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isSymbolicLink()) throw new Error(`dist symlink is outside the allowlist: ${name}`);
+      if (entry.isDirectory() && directories.has(name)) {
+        await assertSafePath(root, `dist/${name}`, true);
+        await walk(name);
+      } else if (entry.isFile() && allowed.has(name)) {
+        await assertSafePath(root, `dist/${name}`);
+        found.add(name);
+      } else throw new Error(`dist does not match the frontend allowlist: ${name}`);
+    }
   }
+  await walk();
+  if (found.size !== allowed.size) throw new Error('dist is missing frontend allowlist files');
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

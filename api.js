@@ -5,12 +5,15 @@ const JuAPI = (() => {
   try { localStorage.removeItem('juflow_token'); } catch (_) { /* Storage may be denied. */ }
 
   function defaultRoute(user) {
-    return { admin: '/dashboard.html', cashier: '/cashier.html', rider: '/rider.html' }[user?.role_name] || '/login.html';
+    return { admin: '/dashboard.html', cashier: '/cashier/', rider: '/rider/' }[user?.role_name] || '/login.html';
   }
 
   function canAccess(pathname, user) {
     if (!['admin', 'cashier', 'rider'].includes(user?.role_name)) return false;
-    return user.role_name === 'admin' || ['/', '/index.html', defaultRoute(user)].includes(pathname);
+    if (user.role_name === 'admin') return true;
+    const route = defaultRoute(user);
+    if (/[\\\0?#]/.test(pathname) || pathname.includes('%') || pathname.split('/').some(part => part === '.' || part === '..')) return false;
+    return pathname === route.slice(0, -1) || pathname.startsWith(route);
   }
 
   // Make authenticated API request

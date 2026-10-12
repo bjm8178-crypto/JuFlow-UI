@@ -5,7 +5,7 @@
   const E = JuStore.escape;
   const money = JuStore.money;
   const state = { customers: [], orders: [], riders: [], selected: null, history: [], historyError: '', profileGeneration: 0 };
-  const labels = { received: 'Received', preparing: 'Preparing', ready: 'Ready for pickup', assigned: 'Rider assigned', picked_up: 'Picked up', on_the_way: 'On the way', arrived: 'Arrived', awaiting_cashier_confirmation: 'Awaiting cashier confirmation', delivered: 'Delivered', cancelled: 'Cancelled', pending: 'Pending' };
+  const labels = { preparing: 'Preparing', pending: 'Preparing', on_the_way: 'On the way', delivered: 'Delivered', cancelled: 'Cancelled' };
   const statusLabel = order => labels[order.status] || order.status || 'Unknown state';
   const endpointId = id => encodeURIComponent(id);
   const hasPin = c => typeof c.lat === 'number' && typeof c.lng === 'number' && Number.isFinite(c.lat) && Number.isFinite(c.lng) && Math.abs(c.lat) <= 90 && Math.abs(c.lng) <= 180;
@@ -110,36 +110,28 @@
     if (!saved?._id || !saved.order_number || !Number.isSafeInteger(saved.total_centavos)) throw Error('The server did not return a confirmed order. Retry with the same values.');
     orderAttempt = null; $('#order-dialog').close(); notice(`Order ${saved.order_number} saved. Confirmed total ${money(saved.total_centavos)}.`); await loadHistory();
   }
+  function progress(order) {
+    if (order.status === 'cancelled') return '<span class="badge amber">Cancelled</span>';
+    const steps = [['preparing', 'Preparing'], ['on_the_way', 'On the way'], ['delivered', 'Delivered']];
+    const at = steps.findIndex(s => s[0] === order.status);
+    return '<p class="map-help">' + steps.map((s, i) => (i <= at ? '● ' : '○ ') + s[1]).join(' &rarr; ') + '</p>';
+  }
   function renderOrders() {
     const filter = $('#order-filter').value;
     const terminal = order => ['delivered', 'cancelled'].includes(order.status);
     const orders = state.orders.filter(order => filter === 'all' || (filter === 'delivered' ? terminal(order) : !terminal(order)));
-    $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge amber">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${['ready', 'assigned'].includes(order.status) ? `<label>Assign rider<select data-rider="${E(order._id)}"><option value="">Choose a rider</option>${state.riders.map(rider => `<option value="${E(rider._id)}" ${order.rider_id === rider._id ? 'selected' : ''}>${E(rider.full_name)}</option>`).join('')}</select></label>` : ''}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
+    $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge amber">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${progress(order)}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
   }
-  async function assignRider(select) {
-    const order = state.orders.find(order => order._id === select.dataset.rider);
-    const error = [...document.querySelectorAll('[data-order-error]')].find(el => el.dataset.orderError === order._id);
-    if (!select.value || select.disabled) return;
-    const riderId = select.value;
-    select.disabled = true; error.textContent = '';
-    try {
-      const saved = await send(`/orders/${endpointId(order._id)}/actions`, 'POST', { action: 'assign', rider_id: riderId, version: order.version, event_id: crypto.randomUUID() });
-      if (!saved?._id) throw Error('The server did not confirm the assignment.');
-      state.orders[state.orders.indexOf(order)] = saved; renderOrders(); notice('Rider assignment saved.');
-    } catch (failure) { select.value = order.rider_id || ''; error.textContent = 'Assignment not confirmed: ' + failure.message + '. Refresh orders before retrying.'; }
-    finally { select.disabled = false; }
-  }
-  async function refresh() {
-    notice('Loading saved records...');
+  async function refresh(quiet) {
+    if (quiet !== true) notice('Loading saved records...');
     try {
       if ($('#customer-list')) {
         state.customers = await request('/customers'); state.selected = state.customers.find(c => c._id === state.selected)?._id || state.customers[0]?._id;
         customerList(); if (state.selected) await loadHistory(); else profile();
       } else {
-        const [orders, riders] = await Promise.all([request('/orders?filter=all'), request('/riders')]);
-        state.orders = orders; state.riders = riders.filter(rider => rider.is_active === true && rider.is_available !== false && rider.user_id); renderOrders();
+        state.orders = await request('/orders?filter=all'); renderOrders();
       }
-      notice('Saved records loaded.');
+      if (quiet !== true) notice('Saved records loaded.');
     } catch (error) { notice('Could not load records: ' + error.message); }
   }
   if ($('#customer-list')) {
@@ -175,7 +167,7 @@
     ['customer-dialog', 'order-dialog'].forEach(id => $('#' + id).addEventListener('cancel', event => { if ($('#' + id).querySelector('form').dataset.busy === 'true') event.preventDefault(); }));
   } else if ($('#order-list')) {
     $('#order-filter').onchange = renderOrders;
-    $('#order-list').onchange = event => { if (event.target.dataset.rider) assignRider(event.target); };
+    setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) refresh(true); }, 10000);
   }
   $('#refresh-records').onclick = refresh;
   refresh();

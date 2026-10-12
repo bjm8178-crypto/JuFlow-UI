@@ -1,16 +1,10 @@
 // Only server-issued cashier reconciliation can complete a delivery.
 window.DeliveryState = {
  status(o) { return o.delivery_status || o.status; },
- completed(o) {
-  const c = o.cashier_confirmation || o.order?.cashier_confirmation;
-  return this.status(o) === 'completed' && !!c && c.role_name === 'cashier' && c.source === 'cashier' &&
-   typeof c.confirmed_by === 'string' && !!c.confirmed_by &&
-   Number.isFinite(Date.parse(c.confirmed_at));
- },
- active(o) { return !this.completed(o) && ['assigned','picked_up','on_the_way','arrived','awaiting_cashier_confirmation','completed'].includes(this.status(o)); },
+ completed(o) { return this.status(o) === 'completed' || this.status(o) === 'delivered'; },
+ active(o) { return ['pending', 'preparing', 'on_the_way'].includes(this.status(o)); },
  label(o) {
-  if (this.completed(o)) return 'Completed - cashier confirmed';
-  return ({assigned:'Assigned',picked_up:'Picked up',on_the_way:'On the way',arrived:'Arrived',awaiting_cashier_confirmation:'Awaiting cashier confirmation',completed:'Completion confirmation unavailable',cancelled:'Cancelled',failed:'Failed'})[this.status(o)] || 'Unknown delivery status';
+  return ({pending:'Preparing',preparing:'Preparing',on_the_way:'On the way',completed:'Delivered',delivered:'Delivered',cancelled:'Cancelled'})[this.status(o)] || 'Unknown status';
  },
  validPoint(p) { return !!p && typeof p.lat === 'number' && typeof p.lng === 'number' && Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180; },
  locationLabel(l, now = Date.now()) {

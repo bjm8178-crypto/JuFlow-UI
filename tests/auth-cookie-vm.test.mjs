@@ -74,11 +74,40 @@ test('role contract and pathname gates', async () => {
     if (role === 'admin') assert.equal(user.role_name, role);
     else {
       assert.equal(user, null);
-      assert.equal(context.location.redirect, '/' + role + '.html');
+      assert.equal(context.location.redirect, '/' + role + '/');
     }
-    const allowed = environment(async () => response(200, { role_name: role }), '/' + (role === 'admin' ? 'dashboard' : role) + '.html');
+    const allowed = environment(async () => response(200, { role_name: role }), role === 'admin' ? '/dashboard.html' : '/' + role + '/');
     vm.runInContext(source('auth-guard.js'), allowed);
     assert.equal((await allowed.JUFLOW_AUTH_READY).role_name, role);
+  }
+});
+
+test('cashier and rider are restricted to their own prefix, including root admin entrypoints', async () => {
+  for (const role of ['cashier', 'rider']) {
+    const route = `/${role}/`;
+    const user = { role_name: role };
+    const client = api(environment(async () => response(200, { user })));
+    assert.equal(client.defaultRoute(user), route);
+    for (const pathname of [`/${role}`, route, `${route}index.html`, `${route}nested/screen.html`]) {
+      assert.equal(client.canAccess(pathname, user), true, pathname);
+      const context = environment(async () => response(200, { user }), pathname);
+      vm.runInContext(source('auth-guard.js'), context);
+      assert.equal((await context.JUFLOW_AUTH_READY).role_name, role);
+      assert.equal(context.location.redirect, undefined);
+    }
+    for (const pathname of ['/', '/index.html', '/dashboard.html', '/orders.html', '/users.html', '/sales.html',
+      '/customers.html', '/dishes.html', '/delivery-map.html', '/admin.html', '/dashboard-mongo.html',
+      '/cashier.html', '/rider.html', `/${role === 'rider' ? 'cashier' : 'rider'}/`, `${route.slice(0, -1)}-other/`,
+      `${route}../dashboard.html`, `${route}%2e%2e/dashboard.html`, `${route}..\\dashboard.html`]) {
+      assert.equal(client.canAccess(pathname, user), false, pathname);
+      const context = environment(async () => response(200, { user }), pathname);
+      vm.runInContext(source('auth-guard.js'), context);
+      assert.equal(await context.JUFLOW_AUTH_READY, null, pathname);
+      assert.equal(context.location.redirect, route, pathname);
+      assert.equal(context.document.documentElement.style.visibility, 'hidden');
+      assert.equal(context.JUFLOW_USER, undefined);
+    }
+    assert.equal(client.canAccess(route, { role_name: 'unknown' }), false);
   }
 });
 
@@ -105,7 +134,12 @@ test('login safeNext blocks external, login loops and other-role pages', () => {
     const fallback = context.api.defaultRoute(user);
     for (const value of ['//evil.test/', '/\\evil.test', '/login.html', 'https://evil.test']) assert.equal(context.safeNext(value, user), fallback);
     assert.equal(context.safeNext(fallback + '?x=1', user), fallback + '?x=1');
-    if (role !== 'admin') assert.equal(context.safeNext('/admin.html', user), fallback);
+    if (role !== 'admin') {
+      for (const value of ['/admin.html', '/', '/index.html', '/dashboard.html', '/cashier.html', '/rider.html',
+        '/cashier-other/', `/${role}/../dashboard.html`, `/${role}/%2e%2e/dashboard.html`,
+        `/${role}/%2f..%2f..%2fdashboard.html`]) assert.equal(context.safeNext(value, user), fallback, value);
+      assert.equal(context.safeNext(`/${role}/index.html?x=1#/me`, user), `/${role}/index.html?x=1#/me`);
+    }
   }
 });
 

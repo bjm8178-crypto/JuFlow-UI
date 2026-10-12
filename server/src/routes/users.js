@@ -25,19 +25,14 @@ export async function updateUser(db, session, id, body, actorId) {
   if (!id) fail(400, 'invalid_id', 'Invalid user id');
   const { full_name, email, phone, role_id, is_active } = body;
   if (is_active !== undefined && typeof is_active !== 'boolean') fail(400, 'validation_error', 'is_active must be a boolean');
-  if (role_id !== undefined && !Number.isSafeInteger(role_id)) fail(400, 'invalid_role', 'Role must be an integer');
+  if (role_id !== undefined) fail(400, 'role_locked', 'Roles cannot be changed');
   await lockAccountIntegrity(db, session);
   const user = await db.collection('users').findOne({ _id: id }, { session });
   if (!user) fail(404, 'user_not_found', 'User not found');
   if (is_active === false && String(id) === String(actorId)) fail(400, 'cannot_deactivate_self', 'You cannot deactivate your own account');
   const updates = {};
   const unsets = {};
-  if (role_id !== undefined) {
-    const role = await db.collection('roles').findOne({ _id: role_id }, { session });
-    if (!role) fail(400, 'invalid_role', 'Role does not exist');
-    updates.role_id = role_id;
-  }
-  if (user.role_id === 1 && user.is_active === true && (is_active === false || (role_id !== undefined && role_id !== 1))) {
+  if (user.role_id === 1 && user.is_active === true && is_active === false) {
     if (await db.collection('users').countDocuments({ role_id: 1, is_active: true }, { session }) <= 1) {
       fail(400, 'cannot_remove_last_admin', 'Cannot remove the last active administrator');
     }
@@ -60,14 +55,14 @@ export async function updateUser(db, session, id, body, actorId) {
   if (is_active !== undefined) updates.is_active = is_active;
   if (!Object.keys(updates).length && !Object.keys(unsets).length) fail(400, 'no_updates', 'No fields to update');
   // A linked profile must never point at an inactive or non-rider account.
-  if (is_active === false || (role_id !== undefined && role_id !== 3)) {
+  if (is_active === false) {
     const linked = await db.collection('riders').findOne({ user_id: id }, { session });
     if (linked) fail(409, 'rider_link_exists', 'Unlink the rider profile before changing this account');
   }
   const ops = { $set: { ...updates, ...updateTimestamp() } };
   if (Object.keys(unsets).length) ops.$unset = unsets;
   const result = await db.collection('users').findOneAndUpdate({ _id: id }, ops, { session, returnDocument: 'after' });
-  if (is_active === false || role_id !== undefined) {
+  if (is_active === false) {
     await db.collection('auth_sessions').updateMany({ user_id: id }, { $set: { revoked_at: new Date(), ...updateTimestamp() } }, { session });
   }
   const role = await db.collection('roles').findOne({ _id: result.role_id }, { session });
@@ -102,13 +97,16 @@ router.post('/', authenticate, requireRole('admin'), async (req, res) => {
     }
     if (is_active !== undefined && typeof is_active !== 'boolean') return res.status(400).json({ error: 'validation_error', message: 'is_active must be a boolean' });
     if (phone !== undefined && phone !== null && typeof phone !== 'string') return res.status(400).json({ error: 'validation_error', message: 'Phone must be text' });
+    if (Number(role_id) !== 2) {
+      return res.status(400).json({ error: 'role_not_allowed', message: 'Only cashier accounts can be created here. The rider account is created automatically.' });
+    }
 
     const db = getDb();
 
-    // Validate role exists
+    // Additional accounts are cashier-only; admin/rider accounts are bootstrapped.
     const role = await db.collection('roles').findOne({ _id: Number(role_id) });
-    if (!role) {
-      return res.status(400).json({ error: 'invalid_role', message: 'Specified role does not exist' });
+    if (role?.name !== 'cashier') {
+      return res.status(400).json({ error: 'cashier_only', message: 'Only cashier accounts can be created' });
     }
 
     const cleanUsername = String(username).trim();

@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ObjectId } from 'mongodb';
 import { validateSale } from '../src/lib/sale.js';
 import { businessDate, dateStart, reportRange } from '../src/lib/business-date.js';
-import { settleOrder } from '../src/services/settlement.js';
+import { validateRefund } from '../src/routes/sales.js';
+import { notifySale } from '../src/services/notifications.js';
 
 const now = new Date('2026-10-12T07:00:00Z');
 const input = () => ({ transaction_id: 'stable', items: [{ name: 'Food', quantity: 2, price_centavos: 100 }], fee_centavos: 30, total_centavos: 230, payment_method: 'cash' });
@@ -30,33 +30,28 @@ test('Manila calendar dates and selected-month/seven-day bounds are real and bou
   assert.equal(r.weekEnd - r.weekStart, 7 * 86400000);
   assert.throws(() => reportRange({ from: '2026-10-12', to: '2026-10-10' }, now));
 });
-function setup(method = 'cash') {
-  const session = {}, calls = [];
-  const order = { _id: new ObjectId(), items: [{ name: 'Food', quantity: 2, unit_price_centavos: 100 }], fee_centavos: 30, total_centavos: 230, payment_method: method, payment_reference: 'REF', cash_tendered_centavos: 300 };
-  const db = { collection: () => ({ findOne: async (q, options) => { calls.push(options); return null; }, insertOne: async (s, options) => { calls.push(options); return { insertedId: new ObjectId() }; } }) };
-  return { db, session, order, actor: { id: String(new ObjectId()), role_name: 'cashier' }, eventId: 'event', reconciliation: { amount_centavos: 230, cash_tendered_centavos: 300 }, now, calls };
-}
-test('settlement uses caller session, exact money and cashier attribution', async () => {
-  const s = setup();
-  const sale = await settleOrder(s);
-  assert.equal(sale.food_centavos, 200); assert.equal(sale.fee_centavos, 30);
-  assert.equal(sale.order_id, s.order._id); assert.equal(String(sale.recorded_by), s.actor.id);
-  assert.ok(s.calls.every(o => o.session === s.session));
-  await assert.rejects(settleOrder({ ...s, actor: { ...s.actor, role_name: 'admin' } }));
-  await assert.rejects(settleOrder({ ...s, session: null }));
-  await assert.rejects(settleOrder({ ...s, reconciliation: { amount_centavos: 229 } }));
-  await assert.rejects(settleOrder({ ...s, reconciliation: { amount_centavos: 230, cash_tendered_centavos: 229 } }));
+
+test('refund input: needs event_id, reason and something to return', () => {
+  const ok = { event_id: 'e1', reason: 'Wrong food', items: [{ index: 0, quantity: 1 }] };
+  assert.deepEqual(validateRefund(ok), { event_id: 'e1', reason: 'Wrong food', items: [{ index: 0, quantity: 1 }], refund_fee: false });
+  assert.equal(validateRefund({ ...ok, items: [], refund_fee: true }).refund_fee, true);
+  for (const bad of [
+    { ...ok, event_id: '' }, { ...ok, reason: '  ' }, { ...ok, items: [] },
+    { ...ok, items: [{ index: 0, quantity: 0 }] }, { ...ok, items: [{ index: -1, quantity: 1 }] },
+    { ...ok, items: [{ index: 0, quantity: 1.5 }] },
+    { ...ok, items: [{ index: 0, quantity: 1 }, { index: 0, quantity: 1 }] }, null, []
+  ]) assert.throws(() => validateRefund(bad), error => error.status === 400);
 });
-test('GCash settlement is explicit recorded verification, never provider proof', async () => {
-  const s = setup('gcash');
-  await assert.rejects(settleOrder(s));
-  await assert.rejects(settleOrder({ ...s, reconciliation: { amount_centavos: 230, verified: true, payment_reference: 'wrong' } }));
-  const sale = await settleOrder({ ...s, reconciliation: { amount_centavos: 230, verified: true, payment_reference: 'REF' } });
-  assert.equal(sale.verification.provider_verified, false);
-  assert.equal(sale.verification.verified, true);
-});
-test('existing order settlement cannot insert a second sale', async () => {
-  const s = setup();
-  s.db = { collection: () => ({ findOne: async () => ({ _id: new ObjectId() }), insertOne: async () => assert.fail('duplicate insert') }) };
-  await assert.rejects(settleOrder(s), e => e.status === 409);
+
+test('admin notification text for delivery, walk-in and return', async () => {
+  const saved = [];
+  const db = { collection: () => ({ insertOne: async doc => { saved.push(doc); } }) };
+  await notifySale(db, { source: 'order', items: [{ quantity: 2 }], total_centavos: 25000 });
+  await notifySale(db, { source: 'walk_in', items: [{ quantity: 1 }], total_centavos: 7500 });
+  await notifySale(db, { source: 'refund', items: [{ quantity: -1 }], total_centavos: -7500 });
+  assert.deepEqual(saved.map(n => n.type), ['sale', 'sale', 'refund']);
+  assert.match(saved[0].body, /Delivery · 2 items · ₱250\.00/);
+  assert.match(saved[1].body, /Walk-in · 1 item · ₱75\.00/);
+  assert.match(saved[2].body, /Return · 1 item · ₱75\.00/);
+  assert.equal(saved[2].title, 'Items returned');
 });

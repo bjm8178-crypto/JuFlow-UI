@@ -2,8 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ObjectId } from '../src/db/mongodb.js';
 import { validateOrder, calculateOrder, digest } from '../src/lib/order.js';
-import { canTransitionDelivery, getOrderNextStatusForAction } from '../src/lib/order-state.js';
-import { createOrder, mutateFulfillment, deliveryScope, patchNotes } from '../src/services/fulfillment.js';
+import { canChangeStatus } from '../src/lib/order-state.js';
+import { createOrder, patchNotes } from '../src/services/fulfillment.js';
+import { setOrderStatus } from '../src/services/simple-flow.js';
 import { getNextOrderNumber } from '../src/services/order-number.js';
 
 const customerId = new ObjectId('507f1f77bcf86cd799439011');
@@ -90,25 +91,6 @@ function fixture() {
 async function intake(f, input = body()) {
   return (await createOrder({ ...f, body: input, actor: admin })).order;
 }
-let eventSeq = 0;
-async function act(f, order, operation, extra = {}, actor = cashier) {
-  const current = f.tables.orders.find(doc => String(doc._id) === String(order._id));
-  return mutateFulfillment({ ...f, entity: 'order', entityId: String(order._id), operation,
-    body: { version: current.version, event_id: `event-${++eventSeq}`, ...extra }, actor });
-}
-async function ready(f, order) { await act(f, order, 'set_preparing'); await act(f, order, 'set_ready'); }
-async function assign(f, order) { await ready(f, order); await act(f, order, 'assign', { rider_id: String(riderId) }); }
-async function event(f, delivery, operation, extra = {}, actor = riderUser, settlement) {
-  const current = f.tables.deliveries.find(doc => String(doc._id) === String(delivery._id));
-  return mutateFulfillment({ ...f, entity: 'delivery', entityId: String(delivery._id), operation,
-    body: { version: current.version, event_id: `event-${++eventSeq}`, ...extra }, actor, settlement });
-}
-async function reported(f, order) {
-  await assign(f, order);
-  const delivery = f.tables.deliveries[0];
-  for (const step of ['picked_up', 'on_the_way', 'arrived', 'report_delivered']) await event(f, delivery, step);
-  return delivery;
-}
 
 describe('strict authoritative order intake', () => {
   it('requires customer ObjectId, nontruncated stable key and strict numeric fields', () => {
@@ -140,6 +122,8 @@ describe('strict authoritative order intake', () => {
     assert.equal(String(order.items[1].priced_by), admin.id);
     assert.equal(order.total_centavos, 270);
     assert.equal(order.version, 0);
+    assert.equal(order.delivery_status, 'pending');
+    assert.equal(String(order.rider_id), String(riderId), 'single-rider association is for legacy map only');
     assert.equal(f.tables.deliveries[0].status, 'pending');
     assert.equal(f.tables.audit_events[0].performed_role, 'admin');
   });
@@ -181,117 +165,107 @@ describe('strict authoritative order intake', () => {
   });
 });
 
-describe('versioned fulfillment and cashier closure', () => {
-  it('role_name is authoritative and delivery transitions are strictly sequential', () => {
-    assert.equal(canTransitionDelivery('assigned', 'picked_up', 'rider').allowed, true);
-    assert.equal(canTransitionDelivery('on_the_way', 'awaiting_cashier_confirmation', 'rider').allowed, false);
-    assert.equal(canTransitionDelivery('awaiting_cashier_confirmation', 'completed', 'admin').allowed, false);
-    assert.equal(canTransitionDelivery('assigned', 'picked_up', undefined).allowed, false);
-    assert.equal(getOrderNextStatusForAction('received', 'set_ready', 'cashier').allowed, false);
+describe('simple status flow: preparing -> on_the_way -> delivered', () => {
+  const move = (f, order, to, actor = cashier) => setOrderStatus({ transaction: f.transaction, orderId: String(order._id), status: to, actor });
+
+  it('permission matrix', () => {
+    const ok = (from, to, role) => canChangeStatus(from, to, role).allowed === true;
+    assert.ok(ok('preparing', 'on_the_way', 'cashier'));
+    assert.ok(ok('preparing', 'on_the_way', 'rider'));
+    assert.ok(ok('on_the_way', 'delivered', 'rider'));
+    assert.ok(ok('on_the_way', 'delivered', 'cashier'));
+    assert.ok(ok('on_the_way', 'preparing', 'cashier'), 'cashier may fix a mistake');
+    assert.ok(!ok('on_the_way', 'preparing', 'rider'), 'rider cannot go back');
+    assert.ok(ok('preparing', 'cancelled', 'cashier'));
+    assert.ok(!ok('preparing', 'cancelled', 'rider'), 'rider cannot cancel');
+    assert.ok(!ok('preparing', 'delivered', 'cashier'), 'cannot skip on_the_way');
+    assert.ok(!ok('preparing', 'on_the_way', 'admin'), 'admin only watches');
+    assert.ok(!ok('delivered', 'preparing', 'cashier'), 'delivered is final');
+    assert.ok(!ok('cancelled', 'preparing', 'cashier'), 'cancelled is final');
+    const same = canChangeStatus('delivered', 'delivered', 'rider');
+    assert.ok(same.allowed && same.noop, 'a retried request is a harmless no-op');
   });
-  it('requires event IDs and versions, rejects stale writes and replays exactly once', async () => {
+
+  it('a new order starts as preparing', async () => {
     const f = fixture(), order = await intake(f);
-    const args = { ...f, entity: 'order', entityId: String(order._id), operation: 'set_preparing', actor: cashier };
-    await assert.rejects(mutateFulfillment({ ...args, body: { event_id: 'a' } }), error => error.status === 400);
-    await assert.rejects(mutateFulfillment({ ...args, body: { version: 0 } }), error => error.status === 400);
-    const payload = { version: 0, event_id: 'prep' };
-    await mutateFulfillment({ ...args, body: payload });
-    const replay = await mutateFulfillment({ ...args, body: payload });
-    assert.equal(replay.duplicate, true); assert.equal(replay.result.version, 1);
-    await assert.rejects(mutateFulfillment({ ...args, body: { version: 0, event_id: 'stale' } }), error => error.status === 409);
-    await assert.rejects(mutateFulfillment({ ...args, body: { ...payload, reason: 'changed' } }), error => error.status === 409);
-    assert.equal(f.tables.fulfillment_events.length, 1);
+    assert.equal(order.status, 'preparing');
   });
-  it('competing same-version actions allow only one effect', async () => {
+
+  it('same-status retries and admin never bypass role checks', async () => {
+    const same = canChangeStatus('preparing', 'preparing', 'cashier');
+    assert.equal(same.allowed, true);
+    assert.equal(same.noop, true);
+    assert.equal(canChangeStatus('preparing', 'preparing', 'admin').allowed, false);
+    assert.equal(canChangeStatus('preparing', 'preparing', 'unknown').allowed, false);
     const f = fixture(), order = await intake(f);
-    const attempts = await Promise.allSettled(['one', 'two'].map(event_id => mutateFulfillment({ ...f, entity: 'order', entityId: String(order._id), operation: 'set_preparing', actor: cashier, body: { version: 0, event_id } })));
-    assert.equal(attempts.filter(result => result.status === 'fulfilled').length, 1);
-    assert.equal(attempts.find(result => result.status === 'rejected').reason.status, 409);
+    await assert.rejects(move(f, order, 'preparing', admin), error => error.status === 409 && /cashier.*rider/.test(error.message));
+    assert.equal(f.tables.orders[0].version, 0);
   });
-  it('only assigns ready orders to active available linked rider-role accounts', async () => {
+
+  it('delivered creates exactly one sale and one notification; a retry creates no second sale', async () => {
     const f = fixture(), order = await intake(f);
-    await assert.rejects(act(f, order, 'assign', { rider_id: String(riderId) }), error => error.status === 409);
-    await ready(f, order);
-    for (const field of ['is_active', 'is_available']) {
-      f.tables.riders[0][field] = false;
-      await assert.rejects(act(f, order, 'assign', { rider_id: String(riderId) }), error => error.code === 'invalid_rider');
-      f.tables.riders[0][field] = true;
-    }
-    f.tables.users[0].role_id = 1;
-    await assert.rejects(act(f, order, 'assign', { rider_id: String(riderId) }), error => error.code === 'invalid_rider');
+    await move(f, order, 'on_the_way');
+    const first = await move(f, order, 'delivered', riderUser);
+    assert.equal(first.order.status, 'delivered');
+    assert.equal(f.tables.sales.length, 1);
+    assert.equal(f.tables.sales[0].total_centavos, 250);
+    assert.equal(f.tables.sales[0].source, 'order');
+    assert.equal(f.tables.notifications.length, 1);
+    const retry = await move(f, order, 'delivered', riderUser);
+    assert.equal(retry.changed, false);
+    assert.equal(f.tables.sales.length, 1);
+    assert.equal(f.tables.notifications.length, 1);
+    assert.equal(f.tables.deliveries[0].status, 'completed');
   });
-  it('scopes reads and mutations to assigned active rider and blocks former owner replay', async () => {
-    const f = fixture(), order = await intake(f); await assign(f, order);
-    assert.equal(String((await deliveryScope(f.db, riderUser)).rider_id), String(riderId));
-    const delivery = f.tables.deliveries[0], payload = { version: delivery.version, event_id: 'pickup' };
-    const args = { ...f, entity: 'delivery', entityId: String(delivery._id), operation: 'picked_up', body: payload };
-    await assert.rejects(mutateFulfillment({ ...args, actor: { ...riderUser, id: admin.id } }), error => error.status === 403);
-    await mutateFulfillment({ ...args, actor: riderUser });
-    f.tables.deliveries[0].rider_id = new ObjectId();
-    await assert.rejects(mutateFulfillment({ ...args, actor: riderUser }), error => error.status === 403);
-  });
-  it('cancellation requires reason, updates both records and cannot reopen', async () => {
+
+  it('cancelled creates no sale', async () => {
     const f = fixture(), order = await intake(f);
-    await assert.rejects(act(f, order, 'cancel'), error => error.status === 400);
-    await act(f, order, 'cancel', { reason: 'Customer cancelled' });
-    assert.equal(f.tables.deliveries[0].status, 'cancelled'); assert.equal(f.tables.orders[0].status, 'cancelled');
-    await assert.rejects(act(f, order, 'assign', { rider_id: String(riderId) }), error => error.status === 409);
+    await move(f, order, 'cancelled');
+    assert.equal(f.tables.sales.length, 0);
+    assert.equal(f.tables.orders[0].status, 'cancelled');
   });
-  it('generic patches cannot write lifecycle/payment/authoritative timestamp fields', async () => {
+
+  it('rejects forbidden moves with 409 and changes nothing', async () => {
+    const f = fixture(), order = await intake(f);
+    await assert.rejects(move(f, order, 'delivered'), error => error.status === 409);
+    await assert.rejects(move(f, order, 'on_the_way', admin), error => error.status === 409 && /cashier.*rider/.test(error.message));
+    await assert.rejects(move(f, order, 'cancelled', riderUser), error => error.status === 409);
+    await assert.rejects(move(f, order, 'shipped'), error => error.status === 400);
+    assert.equal(f.tables.orders[0].status, 'preparing');
+    assert.equal(f.tables.orders[0].delivery_status, 'pending');
+    assert.equal(f.tables.deliveries[0].status, 'pending');
+    assert.equal(f.tables.sales.length, 0);
+  });
+
+  it('cashier can move an order back from on_the_way to preparing; the rider cannot', async () => {
+    const f = fixture(), order = await intake(f);
+    await move(f, order, 'on_the_way', riderUser);
+    await assert.rejects(move(f, order, 'preparing', riderUser), error => error.status === 409);
+    await move(f, order, 'preparing', cashier);
+    assert.equal(f.tables.orders[0].status, 'preparing');
+  });
+
+  it('generic patches cannot write lifecycle/payment fields', async () => {
     const f = fixture(), order = await intake(f);
     for (const field of ['status', 'rider_id', 'payment_verified', 'cash_collected', 'pickup_time', 'cashier_confirmation']) {
       await assert.rejects(patchNotes({ transaction: f.transaction, entity: 'order', entityId: String(order._id), actor: admin, body: { notes: 'x', version: 0, event_id: 'patch', [field]: true } }), error => error.status === 400);
     }
     assert.equal(f.tables.orders[0].version, 0);
   });
-  it('refuses admin final closure and premature arrived confirmation', async () => {
-    const f = fixture(), order = await intake(f); await assign(f, order);
-    const delivery = f.tables.deliveries[0];
-    for (const step of ['picked_up', 'on_the_way', 'arrived']) await event(f, delivery, step);
-    const reconciliation = { amount_centavos: 250 };
-    await assert.rejects(event(f, delivery, 'confirm', { reconciliation }, cashier), error => error.status === 409);
-    await event(f, delivery, 'report_delivered');
-    await assert.rejects(event(f, delivery, 'confirm', { reconciliation }, admin), error => error.status === 403);
-  });
-  it('atomic confirmation writes trusted cashier evidence, settles once and returns identical replay', async () => {
-    const f = fixture(), order = await intake(f), delivery = await reported(f, order);
-    let settled = 0;
-    const settlement = async ({ db, session, order, actor }) => {
-      assert.equal(actor.role_name, 'cashier');
-      const sale = { _id: new ObjectId(), order_id: order._id }; await db.collection('sales').insertOne(sale, { session }); settled++; return sale;
-    };
-    const payload = { version: f.tables.deliveries[0].version, event_id: 'confirmed', reconciliation: { amount_centavos: 250 } };
-    const args = { ...f, entity: 'delivery', entityId: String(delivery._id), operation: 'confirm', body: payload, actor: cashier, settlement };
-    await mutateFulfillment(args); const replay = await mutateFulfillment(args);
-    assert.equal(settled, 1); assert.equal(replay.duplicate, true); assert.equal(f.tables.sales.length, 1);
-    assert.equal(f.tables.orders[0].status, 'delivered'); assert.equal(f.tables.orders[0].payment_status, 'paid');
-    assert.equal(f.tables.deliveries[0].cashier_confirmation.role_name, 'cashier');
-    assert.equal(String(f.tables.orders[0].confirmed_by), cashier.id);
-  });
-  it('rejects insufficient actual cash and unverified/mismatched GCash evidence', async () => {
-    for (const method of ['cash', 'gcash']) {
-      const f = fixture();
-      const order = await intake(f, { ...body(), payment_method: method, cash_tendered_centavos: 300, payment_reference: 'REF' });
-      const delivery = await reported(f, order);
-      for (const reconciliation of [{ amount_centavos: 249 }, { amount_centavos: 250 },
-        { amount_centavos: 250, cash_tendered_centavos: 249, payment_reference: 'OTHER', verified: true }]) {
-        await assert.rejects(event(f, delivery, 'confirm', { reconciliation }, cashier), error => error.status === 400);
-      }
-      assert.equal(f.tables.orders[0].payment_status, 'pending');
-    }
-  });
-  it('settlement or audit failure leaves no partial completion or sale', async () => {
-    for (const failure of ['settlement', 'audit']) {
-      const f = fixture(), order = await intake(f), delivery = await reported(f, order);
-      if (failure === 'audit') f.fail('audit_events');
-      const settlement = async ({ db, session, order }) => {
-        const sale = { _id: new ObjectId(), order_id: order._id }; await db.collection('sales').insertOne(sale, { session });
-        if (failure === 'settlement') throw new Error('Injected settlement failure');
-        return sale;
-      };
-      await assert.rejects(event(f, delivery, 'confirm', { reconciliation: { amount_centavos: 250 } }, cashier, settlement), /Injected/);
-      assert.equal(f.tables.sales.length, 0); assert.equal(f.tables.deliveries[0].status, 'awaiting_cashier_confirmation');
-      assert.equal(f.tables.orders[0].payment_status, 'pending');
+
+  it('delivery status, sale, notification and audit roll back together', async () => {
+    for (const collection of ['sales', 'notifications', 'audit_events']) {
+      const f = fixture(), order = await intake(f);
+      await move(f, order, 'on_the_way');
+      f.fail(collection);
+      await assert.rejects(move(f, order, 'delivered', riderUser), /Injected/);
+      assert.equal(f.tables.orders[0].status, 'on_the_way');
+      assert.equal(f.tables.deliveries[0].status, 'on_the_way');
+      assert.equal(f.tables.orders[0].version, 1);
+      assert.equal(f.tables.sales.length, 0);
+      assert.equal((f.tables.notifications ?? []).length, 0);
+      assert.equal(f.tables.audit_events.length, 2);
     }
   });
 });
+

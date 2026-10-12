@@ -158,14 +158,7 @@ async function seed() {
     ]);
     console.log(`   ✅ Created ${settings.insertedCount} settings`);
 
-    // 7. Seed Sample Riders
-    console.log('\n🏍️  Creating sample riders...');
-    const riders = await db.collection('riders').insertMany([
-      { full_name: 'Juan Dela Cruz', phone: '09171234567', vehicle_type: 'motorcycle', plate_no: 'ABC-1234', is_available: true, is_active: true, notes: 'Marilao area specialist', ...timestamps() },
-      { full_name: 'Pedro Santos', phone: '09181234567', vehicle_type: 'motorcycle', plate_no: 'DEF-5678', is_available: true, is_active: true, notes: null, ...timestamps() },
-      { full_name: 'Maria Garcia', phone: '09191234567', vehicle_type: 'bicycle', plate_no: null, is_available: true, is_active: true, notes: 'Short-range Saog deliveries', ...timestamps() }
-    ]);
-    console.log(`   ✅ Created ${riders.insertedCount} riders`);
+    // The single rider account is created automatically at server start (RIDER_PASSWORD), not seeded.
 
     // Summary
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -178,7 +171,7 @@ async function seed() {
     console.log(`   Products: ${products.insertedCount}`);
     console.log(`   Delivery Zones: ${zones.insertedCount}`);
     console.log(`   Settings: ${settings.insertedCount}`);
-    console.log(`   Riders: ${riders.insertedCount}`);
+    console.log('   Rider: created at server start from RIDER_PASSWORD');
     console.log('\n🔑 Login Credentials:');
     console.log('   Username: admin');
     console.log(`   Password: ${initialPassword}`);

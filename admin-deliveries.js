@@ -12,8 +12,8 @@
   text('h2', c.name || c.full_name || 'Customer name unavailable', box);
   text('p', D.label(d), box);
   const list = text('dl', '', box);
-  for (const [label, value] of [['Order',d.order?.order_number || 'Unavailable'],['Rider',riderName(d)],['Address',c.address || 'Unavailable'],['Landmark',c.landmark || 'None supplied'],['Rider location',D.locationLabel(locationOf(d))]]) { text('dt',label,list); text('dd',value,list); }
-  text('p','Destination remains visible until server cashier confirmation is received.',box);
+  for (const [label, value] of [['Order',d.order?.order_number || 'Unavailable'],['Address',c.address || 'Unavailable'],['Landmark',c.landmark || 'None supplied'],['Rider location',D.locationLabel(locationOf(d))]]) { text('dt',label,list); text('dd',value,list); }
+  text('p','Shown on the map until the order is marked Delivered.',box);
   if (D.validPoint(c)) { const a = text('a','Open destination in Google Maps',box); a.className = 'secondary'; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.href = 'https://www.google.com/maps/search/?' + new URLSearchParams({api:'1',query:c.lat + ',' + c.lng}); }
   const photo = D.mediaURL(c.landmark_photo || c.landmark_photo_url);
   if (photo) { const b = text('button','View landmark photo',box); b.className = 'secondary'; b.onclick = () => { const image = el('delivery-landmark-image'); image.src = photo; image.onerror = () => { image.removeAttribute('src'); el('landmark-status').textContent = 'Landmark photo unavailable or access denied.'; }; el('landmark-status').textContent = ''; el('delivery-landmark-dialog').showModal(); }; }

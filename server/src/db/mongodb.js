@@ -166,7 +166,9 @@ export async function createIndexes(database = getDb()) {
       { transaction_id: 1 },
       { name: 'transaction_id_unique', unique: true, partialFilterExpression: { transaction_id: { $type: 'string' } } }
     );
+    await db.collection('sales').createIndex({ void_id: 1 }, { unique: true, sparse: true });
     await db.collection('sales').createIndex({ sale_time: -1 });
+    await db.collection('sales').createIndex({ received_at: -1 });
     await db.collection('sales').createIndex({ is_test_sale: 1 });
     await db.collection('sales').createIndex({ order_id: 1 }, {
       name: 'order_settlement_unique', unique: true,
@@ -175,6 +177,9 @@ export async function createIndexes(database = getDb()) {
     await db.collection('deliveries').createIndex({ rider_id: 1, status: 1, updated_at: -1 });
     await db.collection('orders').createIndex({ customer_id: 1, created_at: -1 });
     await db.collection('sales').createIndex({ is_test_sale: 1, sale_time: -1 });
+
+    // Admin notifications expire after 30 days
+    await db.collection('notifications').createIndex({ created_at: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 });
 
     await verifyRequiredIndexes(db);
     console.log('✅ Database indexes created');
@@ -192,6 +197,7 @@ export const REQUIRED_INDEXES = [
   ['orders', 'order_idempotency_unique', { idempotency_key: 1 }, { idempotency_key: { $type: 'string' } }],
   ['deliveries', 'order_id_1', { order_id: 1 }],
   ['sales', 'transaction_id_unique', { transaction_id: 1 }, { transaction_id: { $type: 'string' } }],
+  ['sales', 'void_id_1', { void_id: 1 }],
   ['sales', 'order_settlement_unique', { order_id: 1 }, { order_id: { $type: 'objectId' } }],
   ['audit_events', 'audit_event_unique', { event_id: 1 }, { event_id: { $type: 'string' } }]
 ];

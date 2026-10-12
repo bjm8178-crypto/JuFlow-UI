@@ -2,7 +2,7 @@
 try { localStorage.removeItem('juflow_token'); } catch (_) { /* Storage may be denied. */ }
 
 window.juflowDefaultRoute = user => ({
-  admin: '/dashboard.html', cashier: '/cashier.html', rider: '/rider.html'
+  admin: '/dashboard.html', cashier: '/cashier/', rider: '/rider/'
 }[user?.role_name] || '/login.html');
 
 async function juflowSessionRequest(endpoint, options = {}) {
@@ -51,7 +51,9 @@ window.JUFLOW_AUTH_READY = (async () => {
       throw Object.assign(new Error('Access denied.'), { status: 403, code: 'forbidden' });
     }
     const route = window.juflowDefaultRoute(user);
-    if (user.role_name !== 'admin' && !['/', '/index.html', route].includes(location.pathname)) {
+    const pathname = location.pathname;
+    const unsafePath = /[\\\0?#%]/.test(pathname) || pathname.split('/').some(part => part === '.' || part === '..');
+    if (user.role_name !== 'admin' && (unsafePath || !(pathname === route.slice(0, -1) || pathname.startsWith(route)))) {
       location.replace(route);
       return null;
     }

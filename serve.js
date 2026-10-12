@@ -3,11 +3,15 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 
 async function createFrontendServer({ root = __dirname, apiPort = 3000 } = {}) {
-  const { FRONTEND_FILES } = await import('./scripts/build-frontend.mjs');
+  const { FRONTEND_FILES, assertSafePath } = await import('./scripts/build-frontend.mjs');
   const allowed = new Set(FRONTEND_FILES);
-  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
+    '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml' };
   return http.createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()');
     // Forward API requests before considering any static path, preserving bodies.
     if (req.url === '/api' || req.url.startsWith('/api/') || req.url.startsWith('/api?')) {
       const headers = { ...req.headers, host: `localhost:${apiPort}` };
@@ -36,25 +40,36 @@ async function createFrontendServer({ root = __dirname, apiPort = 3000 } = {}) {
     let pathname;
     try { pathname = decodeURIComponent(req.url.split('?')[0]); }
     catch { res.writeHead(400); res.end(); return; }
+    if (!pathname.startsWith('/') || /[\\\0]/.test(pathname) || pathname.split('/').some((part) => part === '.' || part === '..')) {
+      res.writeHead(404); res.end(); return;
+    }
     if (pathname === '/') {
       res.writeHead(302, { Location: '/login.html' });
       res.end();
       return;
     }
-    if (pathname === '/cashier' || pathname === '/cashier/') {
-      pathname = '/cashier/index.html';
+    for (const app of ['cashier', 'rider']) {
+      if (pathname === '/' + app || pathname === '/' + app + '.html') {
+        const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+        res.writeHead(302, { Location: '/' + app + '/' + query });
+        res.end(); return;
+      }
+      if (pathname === '/' + app + '/') pathname = '/' + app + '/index.html';
     }
     const filename = pathname.slice(1);
-    if (!pathname.startsWith('/') || (!allowed.has(filename) && filename !== 'cashier/index.html')) {
+    if (!allowed.has(filename) || !types[path.extname(filename)]) {
       res.writeHead(404); res.end(); return;
     }
     try {
-      const file = path.join(root, filename);
-      // Do not let a symlink in an allowed location expose repository secrets.
-      if (!(await fs.lstat(file)).isFile()) throw new Error('Not a regular file');
+      const file = await assertSafePath(root, filename);
       const content = await fs.readFile(file);
-      res.writeHead(200, { 'Content-Type': `${types[path.extname(file)]}; charset=utf-8`,
-        'Content-Length': content.length, 'Cache-Control': 'no-store' });
+      const type = types[path.extname(file)];
+      if (filename === 'cashier/sw.js' || filename === 'rider/sw.js') {
+        res.setHeader('Service-Worker-Allowed', `/${filename.split('/')[0]}/`);
+        res.setHeader('Cache-Control', 'no-cache');
+      } else res.setHeader('Cache-Control', 'no-store');
+      res.writeHead(200, { 'Content-Type': type + (type.startsWith('image/') ? '' : '; charset=utf-8'),
+        'Content-Length': content.length });
       res.end(req.method === 'HEAD' ? undefined : content);
     } catch { res.writeHead(404); res.end(); }
   });
