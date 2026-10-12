@@ -22,8 +22,21 @@
       <a id="report-export" class="export-btn" href="#"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Export CSV</a>
     </div>
     <div class="report-filters">
-      <label class="field"><span>From</span><input id="report-from" type="date"></label>
-      <label class="field"><span>Through</span><input id="report-to" type="date"></label>
+      <div class="field range-field" role="group" aria-label="Date range">
+        <span>Date range</span>
+        <div class="range-box">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4m8-4v4"/></svg>
+          <label class="range-part"><small>From</small><input id="report-from" type="date"></label>
+          <span class="range-arrow" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></span>
+          <label class="range-part"><small>Through</small><input id="report-to" type="date"></label>
+        </div>
+        <div class="range-presets">
+          <button type="button" data-range="today">Today</button>
+          <button type="button" data-range="7">Last 7 days</button>
+          <button type="button" data-range="month">This month</button>
+          <button type="button" data-range="clear">All dates</button>
+        </div>
+      </div>
       <label class="field"><span>Data</span><select id="report-test"><option value="false">Real sales</option><option value="true">Test sales</option><option value="all">All sales</option></select></label>
       <label class="field"><span>Source</span><select id="report-source"><option value="">All sources</option><option value="order">Orders</option><option value="walk_in">Walk-in</option><option value="device">Device</option></select></label>
     </div>
@@ -166,7 +179,23 @@
   }
 
   if (el('sales-date')) el('sales-date').onchange = () => { page = 1; hadData = false; refresh(); };
-  ['report-from', 'report-to', 'report-test', 'report-source'].forEach(id => { el(id).onchange = () => { page = 1; refresh(); }; });
+  const fromEl = el('report-from'), toEl = el('report-to');
+  const ymd = d => d.toISOString().slice(0, 10);
+  const shift = (iso, days) => ymd(new Date(Date.parse(iso + 'T00:00:00Z') + days * 86400000));
+  function syncRange() {
+    toEl.min = fromEl.value || ''; fromEl.max = toEl.value || '';
+    const t = today(), f = fromEl.value, e = toEl.value;
+    const active = !f && !e ? 'clear' : f === t && e === t ? 'today' : f === shift(t, -6) && e === t ? '7' : f === t.slice(0, 8) + '01' && e === t ? 'month' : '';
+    panel.querySelectorAll('[data-range]').forEach(b => b.classList.toggle('on', b.dataset.range === active));
+  }
+  function setRange(kind) {
+    const t = today();
+    const [f, e] = kind === 'today' ? [t, t] : kind === '7' ? [shift(t, -6), t] : kind === 'month' ? [t.slice(0, 8) + '01', t] : ['', ''];
+    fromEl.value = f; toEl.value = e; syncRange(); page = 1; refresh();
+  }
+  panel.querySelectorAll('[data-range]').forEach(b => { b.onclick = () => setRange(b.dataset.range); });
+  ['report-from', 'report-to', 'report-test', 'report-source'].forEach(id => { el(id).onchange = () => { syncRange(); page = 1; refresh(); }; });
+  syncRange();
   el('report-prev').onclick = () => { if (page > 1) { page--; refresh(); } };
   el('report-next').onclick = () => { page++; refresh(); };
   if (el('refresh-sales')) el('refresh-sales').onclick = refresh;

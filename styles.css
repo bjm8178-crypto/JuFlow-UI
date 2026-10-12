@@ -268,3 +268,45 @@ body.has-order .checkout-bar{display:flex}
   .report-table .empty-row td::before{content:none}
 }
 @media(max-width:420px){.report-filters{grid-template-columns:1fr}}
+
+/* ---- Customers: header actions, delete, pin import ---- */
+.heading-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.heading-actions .primary,.heading-actions .secondary{min-height:42px}
+#delete-customer{margin:12px 0 0;width:100%}
+.notice-warn{background:#fdf0d6;color:#8a5a12;border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:6px}
+#pin-dialog .profile-details{margin:18px 0}
+#pin-dialog a.secondary{display:flex;margin-bottom:6px}
+
+/* ---- Dishes: what is on sale today ---- */
+.today-panel{margin-bottom:22px;padding-bottom:18px}
+.selling-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;padding:16px 22px 4px}
+.selling-list .empty{grid-column:1/-1;padding:18px 4px}
+.selling-card{display:flex;align-items:center;gap:12px;border:1px solid var(--border);border-radius:12px;padding:10px 12px;background:#fff}
+.selling-card.has-sales{background:var(--orange-soft);border-color:#ecc9b3}
+.selling-card .thumb{width:48px;height:48px;border-radius:10px;object-fit:cover;background:#eef0ea;flex:none}
+.selling-card .grow{flex:1;min-width:0}
+.selling-card strong{display:block;font-size:13px;line-height:1.25}
+.selling-card small{font-size:11px;color:var(--muted)}
+.sold-count{text-align:center;line-height:1.1;flex:none}
+.sold-count b{display:block;font-size:24px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.sold-count span{font-size:10px;color:var(--muted)}
+.selling-card.has-sales .sold-count b{color:var(--orange)}
+
+/* ---- Sales report: date range ---- */
+.report-filters .range-field{grid-column:span 2;min-width:0}
+.range-field>span{display:block;font-size:11px;color:var(--muted);margin-bottom:6px}
+.range-box{display:flex;align-items:center;gap:10px;border:1px solid #dce1d9;border-radius:10px;background:#fff;padding:4px 12px;min-height:50px;transition:border-color .15s,box-shadow .15s}
+.range-box:hover{border-color:#c6cdc2}
+.range-box:focus-within{border-color:var(--orange);box-shadow:0 0 0 3px #bc512526}
+.range-box>.icon{color:var(--orange);width:18px;height:18px}
+.range-arrow{color:#9aa39a;display:flex}
+.range-arrow .icon{width:16px;height:16px}
+.range-part{flex:1;min-width:0;display:block;margin:0}
+.range-part small{display:block;font-size:10px;font-weight:600;color:var(--muted);line-height:1.1;margin-top:3px}
+.sales-page .range-box input{border:0;box-shadow:none;height:28px;min-height:28px;padding:0;background:transparent;font-size:14px;font-weight:600;width:100%}
+.sales-page .range-box input:focus,.sales-page .range-box input:hover{box-shadow:none;border:0}
+.range-presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.range-presets button{border:1px solid var(--border);background:#fff;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:600;color:#566156}
+.range-presets button.on{background:var(--orange-soft);border-color:#ecc9b3;color:var(--orange)}
+@media(max-width:850px){.report-filters{grid-template-columns:1fr 1fr}.report-filters .range-field{grid-column:1/-1}}
+@media(max-width:480px){.report-filters{grid-template-columns:1fr}.range-box{gap:6px;padding:4px 10px}}

@@ -50,6 +50,14 @@
       </div>
     </section>
 
+    <section class="panel today-panel" id="today-panel" aria-labelledby="selling-title">
+      <div class="panel-heading">
+        <div><h2 id="selling-title">Selling today</h2><p id="selling-sub">Loading today’s menu…</p></div>
+        <button type="button" class="secondary" id="refresh-selling">Refresh</button>
+      </div>
+      <div id="selling-list" class="selling-list"></div>
+    </section>
+
     <form class="panel form-panel" id="f">
       <h2 id="form-title">Add a dish</h2>
       <input type="hidden" id="id">
@@ -81,7 +89,19 @@ const api=async(u,o={})=>{const r=await fetch('/api'+u,{credentials:'same-origin
 const say=(t,err)=>{const m=$('msg');m.textContent=t;m.classList.toggle('error',!!err);if(!err&&window.showDemoNotice)showDemoNotice(t)};
 function resize(file){return new Promise((ok,no)=>{const img=new Image();img.onload=()=>{const s=Math.min(1,480/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);ok(c.toDataURL('image/webp',.8))};img.onerror=no;img.src=URL.createObjectURL(file)})}
 function resetForm(){$('f').reset();$('id').value='';$('reset').hidden=true;$('form-title').textContent='Add a dish'}
-async function load(){dishes=await api('/products');const m=await api('/menu/today');$('today').textContent='· '+m.date;picked=new Set(m.dishes.map(d=>d._id));render()}
+let onSale=[],sold={};
+async function loadSelling(){const[m,c]=await Promise.all([api('/menu/today'),api('/sales/counts').catch(()=>({counts:{}}))]);onSale=m.dishes||[];sold=c.counts||{};renderSelling(m.date)}
+function renderSelling(date){const L=$('selling-list');L.textContent='';
+ const units=onSale.reduce((s,d)=>s+(sold[d._id]||0),0),pesos=onSale.reduce((s,d)=>s+(sold[d._id]||0)*d.price_centavos,0);
+ $('selling-sub').textContent=onSale.length?onSale.length+(onSale.length===1?' dish':' dishes')+' on sale · '+units+' sold so far · ₱'+(pesos/100).toFixed(2):'Nothing is on sale yet';
+ if(!onSale.length){const p=document.createElement('p');p.className='empty';p.textContent='No dishes are set for today'+(date?' ('+date+')':'')+'. Tick “Serve today” on the dishes below, then save today’s menu.';L.append(p);return}
+ [...onSale].sort((a,b)=>(sold[b._id]||0)-(sold[a._id]||0)||a.name.localeCompare(b.name)).forEach(d=>{
+  const n=sold[d._id]||0,card=document.createElement('div');card.className='selling-card'+(n?' has-sales':'');
+  const im=d.photo_path?Object.assign(document.createElement('img'),{src:d.photo_path,alt:'',className:'thumb'}):Object.assign(document.createElement('div'),{className:'thumb'});
+  const info=document.createElement('div');info.className='grow';const nm=document.createElement('strong');nm.textContent=d.name;const pr=document.createElement('small');pr.textContent='₱'+(d.price_centavos/100).toFixed(2);info.append(nm,pr);
+  const ct=document.createElement('div');ct.className='sold-count';const num=document.createElement('b');num.textContent=String(n);const lab=document.createElement('span');lab.textContent='sold';ct.append(num,lab);
+  card.append(im,info,ct);L.append(card)})}
+async function load(){dishes=await api('/products');const m=await api('/menu/today');$('today').textContent='· '+m.date;picked=new Set(m.dishes.map(d=>d._id));render();await loadSelling().catch(er=>say(er.message,true))}
 function render(){const L=$('list');L.textContent='';
  if(!dishes.length){const p=document.createElement('p');p.className='empty';p.textContent='No dishes yet. Add your first dish above.';L.append(p);return}
  dishes.forEach(d=>{const r=document.createElement('div');r.className='list-row';
@@ -104,7 +124,9 @@ $('f').onsubmit=async ev=>{ev.preventDefault();$('save').disabled=true;say('Savi
  if($('file').files[0])await api('/products/'+d._id+'/image',{method:'POST',body:JSON.stringify({data_url:await resize($('file').files[0])})});
  resetForm();say('Saved.');await load()}catch(er){say(er.message,true)}finally{$('save').disabled=false}};
 $('reset').onclick=()=>{resetForm();say('')};
-document.querySelectorAll('[data-save-menu]').forEach(b=>b.onclick=async()=>{try{await api('/menu/today',{method:'PUT',body:JSON.stringify({product_ids:[...picked]})});say("Today's menu saved. Cashiers will see it now.")}catch(er){say(er.message,true)}});
+$('refresh-selling').onclick=()=>loadSelling().catch(er=>say(er.message,true));
+setInterval(()=>{if(!document.hidden&&onSale.length)loadSelling().catch(()=>{})},20000);
+document.querySelectorAll('[data-save-menu]').forEach(b=>b.onclick=async()=>{try{await api('/menu/today',{method:'PUT',body:JSON.stringify({product_ids:[...picked]})});say("Today's menu saved. Cashiers will see it now.");await loadSelling()}catch(er){say(er.message,true)}});
 JUFLOW_AUTH_READY.then(u=>{if(u&&u.role_name!=='admin')location.replace('/cashier/');else if(u)load().catch(er=>say(er.message,true))});
 </script>
 </body>

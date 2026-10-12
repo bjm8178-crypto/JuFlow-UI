@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/shared/styles.css">
 <title>JuFlow Rider</title>
 </head>
-<body class="app-page">
+<body class="app-page rider-app">
 
 <!-- App Shell -->
 <div id="app-shell" style="display:none;">
@@ -59,27 +59,28 @@
 <form id="login-screen" class="app-card login-card" style="display:none;">
   <a class="brand" href="/rider/">
     <span class="brand-mark rider-mark">J<span>•</span></span>
-    <span>JuFlow<span class="brand-sub">RIDER</span></span>
+    <span>JuFlow<span class="brand-sub">Rider</span></span>
   </a>
   <h2>Rider sign in</h2>
   <input id="login-username" placeholder="Username" aria-label="Username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
   <input id="login-password" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password" required>
-  <button class="primary full" type="submit">Sign in</button>
+  <button class="app-btn primary full large" type="submit">Sign in</button>
   <p id="login-error" class="status-msg error" role="alert"></p>
-  <button type="button" id="install-prompt-btn" class="app-btn secondary" style="margin-top:16px;display:none;">
-    📱 Install Rider App
+  <button type="button" id="install-prompt-btn" class="app-btn secondary full" style="display:none;">
+    Install the Rider app
   </button>
 </form>
 
 <!-- Loading/Connecting State -->
-<div id="connecting-screen" class="app-card" style="text-align:center;padding:48px 24px;">
-  <div class="brand-mark rider-mark" style="font-size:48px;margin-bottom:16px;">J<span>•</span></div>
-  <h2>Connecting...</h2>
-  <p style="color:var(--text-muted);">Loading JuFlow Rider</p>
-  <div class="spinner" style="margin:24px auto;"></div>
+<div id="connecting-screen" class="app-card connecting">
+  <div class="brand-mark rider-mark">J<span>•</span></div>
+  <h2>Connecting…</h2>
+  <p class="muted">Loading JuFlow Rider</p>
+  <div class="spinner"></div>
 </div>
 
 <script defer src="/rider/app.js"></script>
+<script defer src="/rider/pin.js"></script>
 <script defer src="/rider/jobs.js"></script>
 <script defer src="/rider/history.js"></script>
 <script defer src="/rider/me.js"></script>

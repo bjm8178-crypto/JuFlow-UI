@@ -104,6 +104,27 @@ router.patch('/:id', authenticate, requireRole('admin', 'cashier'), async (req, 
   }
 });
 
+// DELETE /api/customers/:id - Admin only. The customer is archived (is_active:false), not erased,
+// so past orders, sales and reports keep their customer details.
+router.delete('/:id', authenticate, requireRole('admin'), async (req, res, next) => {
+  try {
+    validId(req.params.id);
+    const db = getDb();
+    const now = new Date();
+    const result = await db.collection('customers').findOneAndUpdate(
+      { _id: toObjectId(req.params.id), is_active: { $ne: false } },
+      { $set: { is_active: false, deleted_at: now, deleted_by: req.user.id, updated_at: now } },
+      { returnDocument: 'after' }
+    );
+    if (!result) {
+      return res.status(404).json({ error: 'not_found', message: 'Customer not found' });
+    }
+    res.json({ deleted: true, _id: String(result._id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.use((error, req, res, next) => {
   if (error.status === 400) return res.status(400).json({ error: error.code, message: error.message });
   next(error);

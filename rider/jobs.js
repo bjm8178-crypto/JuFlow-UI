@@ -116,6 +116,8 @@
       showJobDetail(job);
     };
 
+    if (window.JuFlowPin && job.status !== 'cancelled') main.appendChild(window.JuFlowPin.card(job));
+
     const next = nextAction(job.status);
     const actionCard = add('');
     if (next) {

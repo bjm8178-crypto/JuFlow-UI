@@ -8,7 +8,7 @@ const oid = value => toObjectId(objectIdString(value, 'id'));
 
 export async function attachOrder(db, delivery, actor) {
   const projection = actor.role_name === 'rider' ? {
-    order_number: 1, customer: 1, items: 1, notes: 1, total_centavos: 1, payment_method: 1,
+    order_number: 1, customer_id: 1, customer: 1, items: 1, notes: 1, total_centavos: 1, payment_method: 1,
     cash_tendered_centavos: 1, change_centavos: 1, status: 1
   } : undefined;
   const order = await db.collection('orders').findOne({ _id: delivery.order_id }, { projection });

@@ -1,7 +1,7 @@
 // JuFlow Rider App - Service Worker
 // Offline-first caching strategy for PWA
 
-const CACHE_VERSION = 'v2-simple-flow';
+const CACHE_VERSION = 'v4-pin-file';
 const CACHE_NAME = `juflow-rider-${CACHE_VERSION}`;
 
 // Files to precache (app shell)
@@ -9,6 +9,7 @@ const PRECACHE_FILES = [
   '/rider/',
   '/rider/index.html',
   '/rider/app.js',
+  '/rider/pin.js',
   '/rider/jobs.js',
   '/rider/history.js',
   '/rider/me.js',

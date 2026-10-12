@@ -41,9 +41,10 @@
     const c = state.customers.find(c => c._id === state.selected);
     if (!c) { $('#customer-profile').innerHTML = '<div class="empty"><h2>A familiar face, a saved address.</h2><p>Select a customer or add a new one.</p></div>'; return; }
     const pin = hasPin(c);
-    $('#customer-profile').innerHTML = `<div class="profile-heading"><div><span class="eyebrow">CUSTOMER PROFILE</span><h2>${E(c.name)}</h2><p>${E(c.messenger || 'No Messenger display name')}</p></div><button class="secondary" id="edit-customer">Edit details &amp; location</button></div><div class="profile-details"><div><small>CONTACT NUMBER</small><strong>${E(c.phone)}</strong></div><div><small>DELIVERY ADDRESS</small><strong>${E(c.address)}</strong></div><div><small>LANDMARK</small><strong>${E(c.landmark || 'No landmark added')}</strong></div><div><small>DESTINATION PIN</small><strong>${pin ? E(c.lat + ', ' + c.lng) : 'No pin saved'}</strong></div></div><div class="profile-location-actions"><button class="secondary" id="show-landmark">View landmark photo</button>${pin ? `<a class="secondary" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(c.lat + ',' + c.lng)}">Open pin in Google Maps</a>` : ''}</div><button class="primary" id="create-order">+ Create order for this customer</button><div class="history"><h2>Order history</h2>${loading ? '<p>Loading history...</p>' : state.historyError ? `<p class="form-error" role="alert">${E(state.historyError)}</p><button class="secondary" id="retry-history">Retry history</button>` : state.history.map(o => `<div class="history-row"><div><strong>${E(o.order_number)}</strong><small>${E(new Date(o.created_at).toLocaleString())} · ${E(statusLabel(o))}</small></div><div>${money(o.total_centavos)}<small>${E(payment(o))}</small></div></div>`).join('') || '<p class="empty">No orders yet.</p>'}</div>`;
+    $('#customer-profile').innerHTML = `<div class="profile-heading"><div><span class="eyebrow">CUSTOMER PROFILE</span><h2>${E(c.name)}</h2><p>${E(c.messenger || 'No Messenger display name')}</p></div><button class="secondary" id="edit-customer">Edit details &amp; location</button></div><div class="profile-details"><div><small>CONTACT NUMBER</small><strong>${E(c.phone)}</strong></div><div><small>DELIVERY ADDRESS</small><strong>${E(c.address)}</strong></div><div><small>LANDMARK</small><strong>${E(c.landmark || 'No landmark added')}</strong></div><div><small>DESTINATION PIN</small><strong>${pin ? E(c.lat + ', ' + c.lng) : 'No pin saved'}</strong></div></div><div class="profile-location-actions"><button class="secondary" id="show-landmark">View landmark photo</button>${pin ? `<a class="secondary" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(c.lat + ',' + c.lng)}">Open pin in Google Maps</a>` : ''}</div><button class="primary" id="create-order">+ Create order for this customer</button><button class="secondary danger" id="delete-customer">Delete customer</button><div class="history"><h2>Order history</h2>${loading ? '<p>Loading history...</p>' : state.historyError ? `<p class="form-error" role="alert">${E(state.historyError)}</p><button class="secondary" id="retry-history">Retry history</button>` : state.history.map(o => `<div class="history-row"><div><strong>${E(o.order_number)}</strong><small>${E(new Date(o.created_at).toLocaleString())} · ${E(statusLabel(o))}</small></div><div>${money(o.total_centavos)}<small>${E(payment(o))}</small></div></div>`).join('') || '<p class="empty">No orders yet.</p>'}</div>`;
     $('#edit-customer').onclick = () => editCustomer(c);
     $('#create-order').onclick = () => newOrder(c);
+    $('#delete-customer').onclick = () => deleteCustomer(c);
     $('#show-landmark').onclick = () => {
       if (!c.landmark_photo) { notice('No landmark photo has been saved.'); return; }
       const url = new URL(c.landmark_photo, window.location.origin);
@@ -122,6 +123,47 @@
     const orders = state.orders.filter(order => filter === 'all' || (filter === 'delivered' ? terminal(order) : !terminal(order)));
     $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge amber">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${progress(order)}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
   }
+  async function deleteCustomer(c) {
+    if (!confirm(`Delete ${c.name}?\n\nThey will no longer appear in Customers or when creating orders. Past orders and sales are kept.`)) return;
+    const button = $('#delete-customer'); if (button) button.disabled = true;
+    try {
+      await request(`/customers/${endpointId(c._id)}`, { method: 'DELETE' });
+      state.customers = state.customers.filter(x => x._id !== c._id);
+      state.selected = state.customers[0]?._id || null;
+      customerList(); if (state.selected) await loadHistory(); else profile();
+      notice(`${c.name} was deleted.`);
+    } catch (error) { if (button) button.disabled = false; notice('Could not delete customer: ' + error.message); }
+  }
+
+  /* Rider pin file: { app:'juflow', type:'customer-pin', version:1, lat, lng, accuracy_m, customer:{id,name,phone,address} } */
+  const digits = value => String(value || '').replace(/\D/g, '').slice(-10);
+  const pinImport = { customer: null, lat: null, lng: null };
+  async function readPinFile(file) {
+    if (!file) return;
+    let data;
+    try { data = JSON.parse(await file.text()); } catch { throw Error('That file is not a JuFlow pin file.'); }
+    const ok = data && data.app === 'juflow' && data.type === 'customer-pin' && data.version === 1;
+    const lat = data?.lat, lng = data?.lng;
+    if (!ok || typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw Error('That file is not a valid JuFlow pin file.');
+    const ref = data.customer || {};
+    let match = ref.id && state.customers.find(c => c._id === ref.id);
+    if (!match && digits(ref.phone).length >= 7) { const same = state.customers.filter(c => digits(c.phone) === digits(ref.phone)); if (same.length === 1) match = same[0]; }
+    const fallback = !match; if (fallback) match = state.customers.find(c => c._id === state.selected);
+    if (!match) throw Error('Could not tell which customer this pin is for. Select the customer first, then import again.');
+    Object.assign(pinImport, { customer: match, lat, lng });
+    const when = data.captured_at && !Number.isNaN(Date.parse(data.captured_at)) ? new Date(data.captured_at).toLocaleString() : 'unknown time';
+    const accuracy = Number.isFinite(data.accuracy_m) ? `about ${Math.round(data.accuracy_m)} m` : 'not reported';
+    $('#pin-summary').innerHTML = `${fallback ? `<p class="notice-warn">The file is for <strong>${E(ref.name || 'an unknown customer')}</strong>, but no matching customer was found. It will be saved to the customer you selected.</p>` : ''}<div class="profile-details"><div><small>SAVE TO</small><strong>${E(match.name)}</strong></div><div><small>ADDRESS</small><strong>${E(match.address)}</strong></div><div><small>NEW PIN</small><strong>${E(lat + ', ' + lng)}</strong></div><div><small>GPS ACCURACY</small><strong>${E(accuracy)}</strong></div><div><small>CAPTURED</small><strong>${E(when)}</strong></div><div><small>CURRENT PIN</small><strong>${hasPin(match) ? E(match.lat + ', ' + match.lng) : 'No pin saved'}</strong></div></div><a class="secondary" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(lat + ',' + lng)}">Check this pin in Google Maps</a>`;
+    $('#pin-form .form-error').textContent = '';
+    $('#pin-dialog').showModal();
+  }
+  async function savePin() {
+    const { customer, lat, lng } = pinImport;
+    const saved = await send(`/customers/${endpointId(customer._id)}`, 'PATCH', { lat, lng });
+    if (!saved?._id) throw Error('The server did not confirm the pin.');
+    const index = state.customers.findIndex(c => c._id === saved._id); if (index >= 0) state.customers[index] = saved;
+    state.selected = saved._id; $('#pin-dialog').close(); customerList(); notice(`Pin saved for ${saved.name}.`); await loadHistory();
+  }
   async function refresh(quiet) {
     if (quiet !== true) notice('Loading saved records...');
     try {
@@ -136,6 +178,9 @@
   }
   if ($('#customer-list')) {
     $('#customer-search').oninput = customerList; $('#new-customer').onclick = () => editCustomer();
+    $('#import-pin').onclick = () => { $('#pin-file').value = ''; $('#pin-file').click(); };
+    $('#pin-file').onchange = event => { readPinFile(event.target.files[0]).catch(error => notice(error.message)); };
+    $('#pin-form').onsubmit = event => { event.preventDefault(); submit(event.currentTarget, savePin); };
     $('#customer-list').onclick = event => { const button = event.target.closest('[data-customer]'); if (button) { state.selected = button.dataset.customer; customerList(); loadHistory(); } };
     document.querySelectorAll('[data-close]').forEach(button => { button.onclick = () => { if (button.closest('form')?.dataset.busy !== 'true') button.closest('dialog').close(); }; });
     $('#customer-form').onsubmit = event => { event.preventDefault(); const form = event.currentTarget; submit(form, async () => {

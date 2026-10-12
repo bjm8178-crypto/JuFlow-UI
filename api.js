@@ -159,6 +159,10 @@ const JuAPI = (() => {
     return await request(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
   }
 
+  async function deleteCustomer(id) {
+    return await request(`/customers/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   // Orders
   async function getOrders(filter = 'active') {
     return await request(`/orders?filter=${filter}`);
@@ -329,6 +333,7 @@ const JuAPI = (() => {
     getCustomerOrders: id => request(`/customers/${encodeURIComponent(id)}/orders`),
     createCustomer,
     updateCustomer,
+    deleteCustomer,
 
     // Orders
     getOrders,

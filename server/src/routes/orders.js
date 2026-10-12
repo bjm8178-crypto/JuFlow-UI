@@ -10,7 +10,7 @@ const oid = value => toObjectId(objectIdString(value, 'id'));
 
 // The rider only needs what is required to deliver and collect.
 const RIDER_FIELDS = {
-  order_number: 1, customer: 1, items: 1, notes: 1, status: 1,
+  order_number: 1, customer_id: 1, customer: 1, items: 1, notes: 1, status: 1,
   total_centavos: 1, fee_centavos: 1, subtotal_centavos: 1,
   payment_method: 1, cash_tendered_centavos: 1, change_centavos: 1,
   created_at: 1, updated_at: 1, delivered_at: 1

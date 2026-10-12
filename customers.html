@@ -209,7 +209,11 @@
             <h1>Your customers.</h1>
             <p>Save their details once. Make the next order easier.</p>
           </div>
-          <button class="primary" id="new-customer">+ New customer</button>
+          <div class="heading-actions">
+            <button class="secondary" id="import-pin" type="button">Import rider pin file</button>
+            <input id="pin-file" type="file" accept=".json,application/json" hidden />
+            <button class="primary" id="new-customer">+ New customer</button>
+          </div>
         </section>
         <p class="local-banner">
           Customer profiles and orders are saved to the shared service. Orders
@@ -301,6 +305,17 @@
               </p>
             </section>
             <button class="primary full">Save customer &amp; location</button>
+            <p class="form-error" role="alert"></p>
+          </form>
+        </dialog>
+        <dialog id="pin-dialog">
+          <form id="pin-form" method="dialog">
+            <div class="dialog-heading">
+              <h2>Save rider pin</h2>
+              <button type="button" class="text-button" data-close>Close</button>
+            </div>
+            <div id="pin-summary"></div>
+            <button class="primary full" id="pin-confirm">Save pin to customer</button>
             <p class="form-error" role="alert"></p>
           </form>
         </dialog>
