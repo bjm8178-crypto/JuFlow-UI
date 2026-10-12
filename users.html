@@ -1,46 +1,107 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Users · JuFlow</title><link rel="stylesheet" href="styles.css"><script src="/auth-guard.js"></script>
-<style>.wrap{max-width:900px;margin:24px auto;padding:0 16px}form.f{display:grid;gap:8px;margin:16px 0}
-.row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #eee;flex-wrap:wrap}.row .grow{flex:1;min-width:180px}
-.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:#eee}.off{opacity:.55}</style></head>
-<body><div class="wrap"><p><a href="dashboard.html">← Dashboard</a></p><h1>Users</h1>
-<p>Create the accounts your staff use to sign in. Cashiers sign in at the cashier app; admins use this website.</p>
-<form class="f panel" id="f" autocomplete="off"><h2>New account</h2>
-<label>Full name<input id="full_name" maxlength="120" required></label>
-<label>Username<input id="username" maxlength="60" required autocomplete="off"></label>
-<label>Password (at least 8 characters)<input id="password" type="password" minlength="8" required autocomplete="new-password"></label>
-<label>Role<select id="role"><option value="2">Cashier</option><option value="1">Admin</option><option value="3">Rider</option></select></label>
-<label id="phoneRow" hidden>Phone number (required for riders)<input id="phone" maxlength="30" inputmode="tel"></label>
-<button class="primary" id="save">Create account</button><p id="msg" role="status"></p></form>
-<h2>Accounts</h2><div id="list"></div></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Users · JuFlow</title>
+<link rel="stylesheet" href="styles.css">
+<script src="/auth-guard.js"></script>
+<script src="app.js" defer></script>
+</head>
+<body class="dashboard-page">
+<aside class="sidebar" id="sidebar">
+  <a class="brand" href="index.html"><span class="brand-mark">J<span>•</span></span><span>JuFlow<span class="brand-sub">JU KITCHEN OPERATIONS</span></span></a>
+  <nav aria-label="Main navigation">
+    <p class="nav-heading">WORKSPACE</p>
+    <a class="nav-item" href="dashboard.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dashboard</span></a>
+    <a class="nav-item" href="orders.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h14l1 14H4L5 7Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><span>Orders</span></a>
+    <a class="nav-item" href="delivery-map.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg><span>Deliveries</span></a>
+    <a class="nav-item" href="customers.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v3"/></svg><span>Customers</span></a>
+    <a class="nav-item" href="dishes.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13h16a8 8 0 0 0-16 0Zm-1 4h18M12 5V3"/></svg><span>Dishes</span></a>
+    <a class="nav-item active" aria-current="page" href="users.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Users</span></a>
+    <p class="nav-heading">BUSINESS</p>
+    <a class="nav-item" href="sales.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v18h17M8 16v-4m5 4V8m5 8V5"/></svg><span>Sales &amp; reports</span></a>
+  </nav>
+  <div class="sidebar-bottom">
+    <button class="nav-item" data-demo><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m9 3-1 3-3 1-2 4 2 2 1 4 4 2 3-1 4-1 2-4-1-3-1-4-4-2-4 1Z"/></svg> Settings</button>
+    <div class="workspace-card"><span class="workspace-dot"></span><div><strong>Ju Kitchen</strong><small>Marilao, Bulacan</small></div></div>
+  </div>
+</aside>
+
+<div class="dashboard-shell">
+  <header class="topbar">
+    <div class="breadcrumb">
+      <button class="mobile-toggle icon-button" aria-label="Toggle menu" aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <span>Workspace</span><span>/</span><strong>Users</strong>
+    </div>
+    <div class="top-actions">
+      <span class="avatar">AD</span>
+      <div class="profile"><strong>Administrator</strong><small>Ju Kitchen</small></div>
+      <a class="icon-button logout" href="/login.html" onclick="event.preventDefault(); juflowLogout()" aria-label="Logout"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4H4v16h6m3-12 4 4-4 4m-5-4h13"/></svg></a>
+    </div>
+  </header>
+
+  <main class="dashboard-content">
+    <section class="page-heading">
+      <div>
+        <span class="eyebrow">YOUR TEAM</span>
+        <h1>Users &amp; accounts.</h1>
+        <p>Create sign-in accounts for your staff. Cashiers use the cashier app; admins use this website.</p>
+      </div>
+    </section>
+
+    <form class="panel form-panel" id="f" autocomplete="off">
+      <h2>New account</h2>
+      <div class="form-grid">
+        <div><label for="full_name">Full name</label><input id="full_name" maxlength="120" required></div>
+        <div><label for="username">Username</label><input id="username" maxlength="60" required autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+        <div><label for="password">Password <span class="hint">(at least 8 characters)</span></label><input id="password" type="password" minlength="8" required autocomplete="new-password"></div>
+        <div><label for="role">Role</label><select id="role"><option value="2">Cashier</option><option value="1">Admin</option><option value="3">Rider</option></select></div>
+        <div id="phoneRow" hidden><label for="phone">Phone number <span class="hint">(required for riders)</span></label><input id="phone" maxlength="30" inputmode="tel"></div>
+      </div>
+      <div class="form-actions"><button class="primary" id="save">Create account</button></div>
+      <p id="msg" class="status-msg" role="status"></p>
+    </form>
+
+    <div class="section-title"><h2>Accounts</h2></div>
+    <div id="list" class="panel list-panel"></div>
+  </main>
+</div>
+<div id="toast" role="status"></div>
+
 <script>
 const $=id=>document.getElementById(id);
 const api=async(u,o={})=>{const r=await fetch('/api'+u,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...o});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||r.status);return d};
-const say=t=>$('msg').textContent=t;
+const say=(t,err)=>{const m=$('msg');m.textContent=t;m.classList.toggle('error',!!err)};
 let me=null;
 function btn(label,fn){const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=label;b.onclick=fn;return b}
+function empty(text){const p=document.createElement('p');p.className='empty';p.textContent=text;$('list').replaceChildren(p)}
+function initials(name){return String(name||'?').split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase()}
 async function load(){
- let users;try{users=await api('/users')}catch(e){$('list').textContent='Could not load users: '+e.message;return}
+ let users;try{users=await api('/users')}catch(e){empty('Could not load users: '+e.message);return}
  const L=$('list');L.textContent='';
- if(!users.length){L.textContent='No accounts yet.';return}
+ if(!users.length){empty('No accounts yet.');return}
  users.forEach(u=>{
-  const row=document.createElement('div');row.className='row'+(u.is_active===false?' off':'');
+  const off=u.is_active===false;
+  const row=document.createElement('div');row.className='list-row'+(off?' off':'');
+  const av=document.createElement('span');av.className='avatar';av.textContent=initials(u.full_name||u.username);
   const g=document.createElement('div');g.className='grow';
   const n=document.createElement('strong');n.textContent=u.full_name||u.username;
-  const s=document.createElement('small');s.textContent=' @'+u.username;
+  const s=document.createElement('small');s.textContent='@'+u.username;
   g.append(n,s);
-  const t=document.createElement('span');t.className='tag';t.textContent=(u.role_name||'?')+(u.is_active===false?' · disabled':'');
-  row.append(g,t);
+  const t=document.createElement('span');t.className='role-tag'+(off?' disabled':'');t.textContent=(u.role_name||'?')+(off?' · disabled':'');
+  const acts=document.createElement('div');acts.className='row-actions';
   const self=me&&String(u._id)===String(me._id||me.id);
-  row.append(btn('Reset password',async()=>{
+  acts.append(btn('Reset password',async()=>{
    const p=prompt('New password for '+u.username+' (at least 8 characters):');if(p===null)return;
-   if(p.length<8){say('Password must be at least 8 characters.');return}
-   try{await api('/users/'+encodeURIComponent(u._id)+'/reset-password',{method:'POST',body:JSON.stringify({new_password:p})});say('Password changed for '+u.username+'.')}catch(e){say(e.message)}
+   if(p.length<8){say('Password must be at least 8 characters.',true);return}
+   try{await api('/users/'+encodeURIComponent(u._id)+'/reset-password',{method:'POST',body:JSON.stringify({new_password:p})});say('Password changed for '+u.username+'.')}catch(e){say(e.message,true)}
   }));
-  if(!self)row.append(btn(u.is_active===false?'Enable':'Disable',async()=>{
-   if(u.is_active!==false&&!confirm('Disable '+u.username+'? They will be signed out.'))return;
-   try{await api('/users/'+encodeURIComponent(u._id),{method:'PATCH',body:JSON.stringify({is_active:u.is_active===false})});say('Updated '+u.username+'.');load()}catch(e){say(e.message)}
+  if(!self)acts.append(btn(off?'Enable':'Disable',async()=>{
+   if(!off&&!confirm('Disable '+u.username+'? They will be signed out.'))return;
+   try{await api('/users/'+encodeURIComponent(u._id),{method:'PATCH',body:JSON.stringify({is_active:off})});say('Updated '+u.username+'.');load()}catch(e){say(e.message,true)}
   }));
+  row.append(av,g,t,acts);
   L.append(row);
  });
 }
@@ -52,9 +113,11 @@ $('f').onsubmit=async e=>{e.preventDefault();$('save').disabled=true;
   const made=await api('/users',{method:'POST',body:JSON.stringify(body)});
   if(body.role_id===3){
    try{await api('/riders',{method:'POST',body:JSON.stringify({full_name:body.full_name,phone,user_id:made._id})})}
-   catch(re){$('f').reset();$('role').onchange();say('Account created for '+body.username+', but the rider profile was not saved ('+re.message+'). Disable this account, then create the rider again with a different username.');load();return}
+   catch(re){$('f').reset();$('role').onchange();say('Account created for '+body.username+', but the rider profile was not saved ('+re.message+'). Disable this account, then create the rider again with a different username.',true);load();return}
   }
   $('f').reset();$('role').onchange();say('Account created for '+body.username+'.');load();
- }catch(er){say(er.message)}finally{$('save').disabled=false}};
+ }catch(er){say(er.message,true)}finally{$('save').disabled=false}};
 (async()=>{try{me=(await api('/auth/me')).user}catch(_){}load()})();
-</script></body></html>
+</script>
+</body>
+</html>
