@@ -8,10 +8,10 @@
 <script src="/auth-guard.js"></script>
 <script>
 window.JUFLOW_AUTH_READY.then(user => {
-  if (user) location.replace("/dashboard.html");
-});
+  if (user) location.replace(window.juflowDefaultRoute(user));
+}).catch(() => {});
 </script>
 </head>
-<body><p>Opening your dashboard… <a href="dashboard.html">Continue</a></p>
+<body><p>Opening your workspace…</p>
 <button type="button" onclick="juflowLogout()">Logout</button></body>
 </html>

@@ -1,73 +1,67 @@
-// JuFlow API Client — Bearer token auth (token stored in localStorage)
+// JuFlow API client: browser-managed HttpOnly cookie sessions.
 const JuAPI = (() => {
   const API_URL = '/api';
 
-  function getToken() {
-    return localStorage.getItem('juflow_token');
+  try { localStorage.removeItem('juflow_token'); } catch (_) { /* Storage may be denied. */ }
+
+  function defaultRoute(user) {
+    return { admin: '/dashboard.html', cashier: '/cashier.html', rider: '/rider.html' }[user?.role_name] || '/login.html';
   }
 
-  function isAuthenticated() {
-    return !!getToken();
+  function canAccess(pathname, user) {
+    if (!['admin', 'cashier', 'rider'].includes(user?.role_name)) return false;
+    return user.role_name === 'admin' || ['/', '/index.html', defaultRoute(user)].includes(pathname);
   }
 
   // Make authenticated API request
   async function request(endpoint, options = {}) {
-    const token = getToken();
     const headers = {
       'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
       ...options.headers
     };
 
     const config = {
       ...options,
-      headers
+      headers,
+      credentials: 'same-origin'
     };
 
+    let response;
     try {
-      const response = await fetch(`${API_URL}${endpoint}`, config);
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ message: 'Request failed' }));
-        throw new Error(error.error || error.message || `HTTP ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('API Error:', error);
-      throw error;
+      response = await fetch(`${API_URL}${endpoint}`, config);
+    } catch (cause) {
+      throw Object.assign(new Error('Network unavailable. Please try again.'), { status: 0, code: 'network_unavailable', cause });
     }
+    const data = response.status === 204 ? null : await response.json().catch(() => null);
+    if (!response.ok) {
+      throw Object.assign(new Error(data?.message || data?.error || `HTTP ${response.status}`), {
+        status: response.status,
+        code: data?.code || data?.error || `http_${response.status}`
+      });
+    }
+    return data;
   }
 
   // Authentication
   async function login(username, password) {
-    const data = await fetch(`${API_URL}/auth/login`, {
+    const result = await request('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
-    if (!data.ok) {
-      const err = await data.json().catch(() => ({}));
-      throw new Error(err.error || err.message || 'Login failed');
-    }
-    const result = await data.json();
-    if (result.token) {
-      localStorage.setItem('juflow_token', result.token);
-      window.JUFLOW_USER = result.user;
-    }
+    window.JUFLOW_USER = result.user || result;
     return result;
   }
 
   async function logout() {
-    await request('/auth/logout', { method: 'POST' }).catch(() => {});
-    localStorage.removeItem('juflow_token');
+    await request('/auth/logout', { method: 'POST' });
     window.JUFLOW_USER = null;
   }
 
   async function getCurrentUser() {
     const data = await request('/auth/me');
-    window.JUFLOW_USER = data;
-    return data;
+    window.JUFLOW_USER = data.user || data;
+    return window.JUFLOW_USER;
   }
 
   async function changePassword(currentPassword, newPassword) {
@@ -298,8 +292,9 @@ const JuAPI = (() => {
 
   return {
     // Auth
-    isAuthenticated,
-    getToken,
+    request,
+    defaultRoute,
+    canAccess,
     login,
     logout,
     getCurrentUser,
@@ -328,6 +323,7 @@ const JuAPI = (() => {
     // Customers
     getCustomers,
     getCustomer,
+    getCustomerOrders: id => request(`/customers/${encodeURIComponent(id)}/orders`),
     createCustomer,
     updateCustomer,
 
@@ -336,6 +332,7 @@ const JuAPI = (() => {
     getOrder,
     createOrder,
     updateOrder,
+    orderAction: (id, data) => request(`/orders/${encodeURIComponent(id)}/actions`, { method: 'POST', body: JSON.stringify(data) }),
 
     // Riders
     getRiders,
@@ -347,6 +344,9 @@ const JuAPI = (() => {
     // Deliveries
     getDeliveries,
     updateDelivery,
+    createDelivery: data => request('/deliveries', { method: 'POST', body: JSON.stringify(data) }),
+    deliveryEvent: (id, data) => request(`/deliveries/${encodeURIComponent(id)}/events`, { method: 'POST', body: JSON.stringify(data) }),
+    confirmDelivery: (id, data) => request(`/deliveries/${encodeURIComponent(id)}/confirm`, { method: 'POST', body: JSON.stringify(data) }),
 
     // Delivery Zones
     getDeliveryZones,

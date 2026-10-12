@@ -5,7 +5,8 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { connect, close } from './db/mongodb.js';
+import { connect, close, readiness } from './db/mongodb.js';
+import { productionConfig, validateStartup } from './lib/config.js';
 import { bootstrap } from './db/bootstrap.js';
 import { cashierTokenAuth } from './middleware/cashier.js';
 
@@ -22,17 +23,16 @@ const PORT = process.env.PORT || 3000;
 // MIDDLEWARE
 // ============================================================================
 
-const isProd = process.env.NODE_ENV === 'production';
+const { production: isProd, origins: allowedOrigins, trustProxy } = productionConfig();
 
 // Render (and Vercel in front of it) are reverse proxies. TRUST_PROXY = number of proxy hops.
-app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+app.set('trust proxy', trustProxy);
 app.disable('x-powered-by');
 app.use(helmet());
 
 // CORS_ORIGINS: comma-separated list of allowed browser origins (e.g. your Vercel URL).
 // With the Vercel rewrite in vercel.json the browser talks same-origin, so CORS is only
 // needed for direct cross-origin clients. Unset in production = no cross-origin access.
-const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean);
 app.use(cors(allowedOrigins.length
   ? { origin: allowedOrigins, credentials: true }
   : isProd ? { origin: false } : { origin: true, credentials: true }));
@@ -44,8 +44,8 @@ app.use(express.json({ limit: '1mb' }));
 app.use((req, res, next) => {
   const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
   const origin = req.headers.origin;
-  const usesBearer = (req.headers.authorization || '').startsWith('Bearer ');
-  if (unsafe && origin && !usesBearer && allowedOrigins.length && !allowedOrigins.includes(origin)) {
+  const deviceRoute = req.path === '/api/cashier/sales' && (req.headers.authorization || '').startsWith('Bearer ');
+  if (unsafe && origin && !deviceRoute && ((isProd && !allowedOrigins.length) || (allowedOrigins.length && !allowedOrigins.includes(origin)))) {
     return res.status(403).json({ error: 'bad_origin', message: 'Origin not allowed' });
   }
   next();
@@ -61,7 +61,10 @@ app.use('/api', apiLimiter);
 app.use('/api/auth/login', loginLimiter);
 
 // Static files for uploads
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  next();
+});
 
 // Request logging
 app.use((req, res, next) => {
@@ -81,6 +84,15 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     timezone: process.env.TZ || 'Asia/Manila'
   });
+});
+
+app.get('/api/ready', async (req, res) => {
+  try {
+    await readiness();
+    res.json({ status: 'ready' });
+  } catch {
+    res.status(503).json({ status: 'unavailable', message: 'Database or integrity indexes unavailable' });
+  }
 });
 
 // ============================================================================
@@ -164,7 +176,7 @@ app.use((err, req, res, next) => {
 
 async function startServer() {
   try {
-    if (isProd && !process.env.MONGODB_URI) throw new Error('MONGODB_URI is required in production');
+    validateStartup();
     if (isProd && !process.env.CASHIER_API_TOKEN) console.warn('⚠️  CASHIER_API_TOKEN not set: /api/cashier/sales will reject all requests.');
 
     // Connect to MongoDB first

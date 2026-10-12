@@ -1,28 +1,69 @@
-const express = require('express');
-const path = require('path');
-const cors = require('cors');
+const http = require('node:http');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 
-const app = express();
-const PORT = 8080;
+async function createFrontendServer({ root = __dirname, apiPort = 3000 } = {}) {
+  const { FRONTEND_FILES } = await import('./scripts/build-frontend.mjs');
+  const allowed = new Set(FRONTEND_FILES);
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+  return http.createServer(async (req, res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Forward API requests before considering any static path, preserving bodies.
+    if (req.url === '/api' || req.url.startsWith('/api/') || req.url.startsWith('/api?')) {
+      const headers = { ...req.headers, host: `localhost:${apiPort}` };
+      const upstream = http.request({ hostname: 'localhost', port: apiPort,
+        method: req.method, path: req.url, headers }, (response) => {
+        res.writeHead(response.statusCode, response.headers);
+        response.pipe(res);
+        response.on('error', () => res.destroy());
+      });
+      upstream.setTimeout(30000, () => upstream.destroy());
+      upstream.on('error', () => {
+        if (res.headersSent) return res.destroy();
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+        res.end('Local API unavailable');
+      });
+      req.on('aborted', () => upstream.destroy());
+      res.on('close', () => upstream.destroy());
+      req.pipe(upstream);
+      return;
+    }
+    if (!['GET', 'HEAD'].includes(req.method)) {
+      res.writeHead(405, { Allow: 'GET, HEAD' });
+      res.end();
+      return;
+    }
+    let pathname;
+    try { pathname = decodeURIComponent(req.url.split('?')[0]); }
+    catch { res.writeHead(400); res.end(); return; }
+    if (pathname === '/') {
+      res.writeHead(302, { Location: '/login.html' });
+      res.end();
+      return;
+    }
+    const filename = pathname.slice(1);
+    if (!pathname.startsWith('/') || !allowed.has(filename)) {
+      res.writeHead(404); res.end(); return;
+    }
+    try {
+      const file = path.join(root, filename);
+      // Do not let a symlink in an allowed location expose repository secrets.
+      if (!(await fs.lstat(file)).isFile()) throw new Error('Not a regular file');
+      const content = await fs.readFile(file);
+      res.writeHead(200, { 'Content-Type': `${types[path.extname(file)]}; charset=utf-8`,
+        'Content-Length': content.length, 'Cache-Control': 'no-store' });
+      res.end(req.method === 'HEAD' ? undefined : content);
+    } catch { res.writeHead(404); res.end(); }
+  });
+}
 
-// Enable CORS for API calls to localhost:3000
-app.use(cors());
+if (require.main === module) {
+  createFrontendServer().then((server) => {
+    server.listen(8080, '127.0.0.1', () => {
+      console.log('JuFlow frontend: http://127.0.0.1:8080/login.html');
+      console.log('Local /api proxy: http://localhost:3000');
+    });
+  }).catch((error) => { console.error(error); process.exitCode = 1; });
+}
 
-// Serve static files from current directory
-app.use(express.static(__dirname));
-
-// Default route - redirect to login
-app.get('/', (req, res) => {
-  res.redirect('/login.html');
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log('\n🎨 JuFlow Frontend Server');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`   Frontend URL: http://localhost:${PORT}`);
-  console.log(`   Login Page:   http://localhost:${PORT}/login.html`);
-  console.log(`   Dashboard:    http://localhost:${PORT}/dashboard-mongo.html`);
-  console.log(`   Backend API:  http://localhost:3000`);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('\n✅ Frontend server ready!\n');
-});
+module.exports = { createFrontendServer };

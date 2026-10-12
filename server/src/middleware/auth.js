@@ -3,19 +3,12 @@ import { getDb, toObjectId } from '../db/mongodb.js';
 import { parseCookies, SESSION_COOKIE } from './cookies.js';
 
 /**
- * Authenticate middleware - validates JWT token from auth_sessions
+ * Authenticate browser sessions; device credentials have their own scoped middleware.
  */
 export async function authenticate(req, res, next) {
   try {
-    const authHeader = req.headers.authorization;
-    let token = null;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-      req.authVia = 'bearer';
-    } else {
-      token = parseCookies(req.headers.cookie)[SESSION_COOKIE] || null;
-      req.authVia = 'cookie';
-    }
+    const token = parseCookies(req.headers.cookie)[SESSION_COOKIE] || null;
+    req.authVia = 'cookie';
 
     if (!token) {
       return res.status(401).json({
@@ -65,15 +58,16 @@ export async function authenticate(req, res, next) {
       username: user.username,
       full_name: user.full_name,
       role_id: user.role_id,
-      role_name: role?.name || 'unknown'
+      role_name: role?.name || 'unknown',
+      role: role?.name || 'unknown'
     };
 
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
-    res.status(500).json({
-      error: 'auth_error',
-      message: 'Authentication error'
+    res.status(503).json({
+      error: 'service_unavailable',
+      message: 'Authentication service is temporarily unavailable'
     });
   }
 }

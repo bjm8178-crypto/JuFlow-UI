@@ -1,15 +1,15 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { connect, timestamps } from './mongodb.js';
+import { seedAllowed } from '../lib/config.js';
 
 async function seed() {
   try {
     console.log('🌱 Starting database seed...\n');
 
     // Production safety guard
-    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED_IN_PRODUCTION !== 'true') {
-      console.error('❌ Refusing to run destructive seed in production without ALLOW_SEED_IN_PRODUCTION=true!');
-      process.exit(1);
+    if (!seedAllowed()) {
+      throw new Error('Seed requires a juflow_dev/test database and exact SEED_CONFIRM_DATABASE; production is always refused');
     }
 
     const db = await connect();

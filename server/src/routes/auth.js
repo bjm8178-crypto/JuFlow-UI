@@ -15,9 +15,10 @@ const router = express.Router();
  */
 router.post('/login', async (req, res) => {
   try {
-    const identifier = String(req.body?.username ?? req.body?.email ?? '').trim();
+    const rawIdentifier = req.body?.username ?? req.body?.email;
+    const identifier = typeof rawIdentifier === 'string' ? rawIdentifier.trim() : '';
     const password = req.body?.password;
-    if (!identifier || typeof password !== 'string' || !password) {
+    if (!identifier || identifier.length > 254 || typeof password !== 'string' || !password || Buffer.byteLength(password) > 72) {
       return res.status(400).json({ error: 'missing_credentials', message: 'Username and password required' });
     }
 
@@ -68,7 +69,6 @@ router.post('/login', async (req, res) => {
 
     res.setHeader('Set-Cookie', sessionCookie(token, SESSION_MS, SECURE()));
     res.json({
-      token,
       user: {
         id: user._id,
         username: user.username,
@@ -145,7 +145,7 @@ router.get('/me', authenticate, async (req, res) => {
 router.post('/change-password', authenticate, async (req, res) => {
   try {
     const { current_password, new_password } = req.body;
-    if (!current_password || !new_password) {
+    if (typeof current_password !== 'string' || typeof new_password !== 'string' || !current_password || !new_password || Buffer.byteLength(current_password) > 72 || Buffer.byteLength(new_password) > 72) {
       return res.status(400).json({ error: 'missing_fields', message: 'Current and new password required' });
     }
     if (new_password.length < 8) {

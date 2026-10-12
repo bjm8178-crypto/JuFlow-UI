@@ -1,14 +1,15 @@
 import express from 'express';
 import { getDb, toObjectId, timestamps, updateTimestamp } from '../db/mongodb.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { validateCustomer, validId, listOptions } from '../lib/customer.js';
 
 const router = express.Router();
 
 // GET /api/customers - List customers (optionally search by name/phone/messenger)
 router.get('/', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
+    const { search, limit, skip } = listOptions(req.query);
     const db = getDb();
-    const { search } = req.query;
 
     let query = { is_active: { $ne: false } };
     if (search) {
@@ -19,6 +20,7 @@ router.get('/', authenticate, requireRole('admin', 'cashier'), async (req, res, 
     const customers = await db.collection('customers')
       .find(query)
       .sort({ name: 1 })
+      .skip(skip).limit(limit)
       .toArray();
 
     res.json(customers);
@@ -30,6 +32,7 @@ router.get('/', authenticate, requireRole('admin', 'cashier'), async (req, res, 
 // GET /api/customers/:id - Get customer by ID
 router.get('/:id', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
+    validId(req.params.id);
     const db = getDb();
     const customer = await db.collection('customers').findOne({
       _id: toObjectId(req.params.id)
@@ -46,11 +49,14 @@ router.get('/:id', authenticate, requireRole('admin', 'cashier'), async (req, re
 // GET /api/customers/:id/orders - Get orders for a customer
 router.get('/:id/orders', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
+    validId(req.params.id);
+    const { limit, skip } = listOptions(req.query);
     const db = getDb();
     const customerId = toObjectId(req.params.id);
     const orders = await db.collection('orders')
       .find({ customer_id: customerId })
       .sort({ created_at: -1 })
+      .skip(skip).limit(limit)
       .toArray();
     res.json(orders);
   } catch (error) {
@@ -61,42 +67,11 @@ router.get('/:id/orders', authenticate, requireRole('admin', 'cashier'), async (
 // POST /api/customers - Create customer
 router.post('/', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
-    const {
-      name,
-      phone,
-      messenger,
-      address,
-      landmark,
-      landmark_photo,
-      lat,
-      lng
-    } = req.body;
-
-    if (!name || !phone || !address) {
-      return res.status(400).json({
-        error: 'validation_error',
-        message: 'Name, phone, and address are required'
-      });
-    }
-
-    if (lat !== undefined && (typeof lat !== 'number' || Math.abs(lat) > 90)) {
-      return res.status(400).json({ error: 'validation_error', message: 'Invalid latitude' });
-    }
-    if (lng !== undefined && (typeof lng !== 'number' || Math.abs(lng) > 180)) {
-      return res.status(400).json({ error: 'validation_error', message: 'Invalid longitude' });
-    }
+    const updates = validateCustomer(req.body);
 
     const db = getDb();
     const result = await db.collection('customers').insertOne({
-      name: name.trim(),
-      phone: phone.trim(),
-      messenger: messenger?.trim() || null,
-      address: address.trim(),
-      landmark: landmark?.trim() || null,
-      landmark_photo: landmark_photo || null,
-      lat: lat ?? null,
-      lng: lng ?? null,
-      is_active: true,
+      ...updates,
       ...timestamps()
     });
 
@@ -110,22 +85,8 @@ router.post('/', authenticate, requireRole('admin', 'cashier'), async (req, res,
 // PATCH /api/customers/:id - Update customer
 router.patch('/:id', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
-    const { name, phone, messenger, address, landmark, landmark_photo, lat, lng, is_active } = req.body;
-    const updates = {};
-
-    if (name !== undefined) updates.name = name.trim();
-    if (phone !== undefined) updates.phone = phone.trim();
-    if (messenger !== undefined) updates.messenger = messenger?.trim() || null;
-    if (address !== undefined) updates.address = address.trim();
-    if (landmark !== undefined) updates.landmark = landmark?.trim() || null;
-    if (landmark_photo !== undefined) updates.landmark_photo = landmark_photo;
-    if (lat !== undefined) updates.lat = lat;
-    if (lng !== undefined) updates.lng = lng;
-    if (is_active !== undefined) updates.is_active = is_active;
-
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({ error: 'no_updates', message: 'No fields to update' });
-    }
+    validId(req.params.id);
+    const updates = validateCustomer(req.body, true);
 
     const db = getDb();
     const result = await db.collection('customers').findOneAndUpdate(
@@ -141,6 +102,11 @@ router.patch('/:id', authenticate, requireRole('admin', 'cashier'), async (req, 
   } catch (error) {
     next(error);
   }
+});
+
+router.use((error, req, res, next) => {
+  if (error.status === 400) return res.status(400).json({ error: error.code, message: error.message });
+  next(error);
 });
 
 export default router;

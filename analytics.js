@@ -1,4 +1,5 @@
-(() => {
+(async () => {
+  try { if (!await window.JUFLOW_AUTH_READY) return; } catch (_) { return; }
   const el = id => document.getElementById(id);
   const E = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = cents => '₱' + ((cents || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -11,6 +12,13 @@
   }
 
   if (el('sales-date')) el('sales-date').value = today();
+
+  let page = 1;
+  const panel = document.createElement('section');
+  panel.className = 'panel';
+  panel.innerHTML = '<h2>Transaction reporting</h2><label>From <input id="report-from" type="date"></label> <label>Through <input id="report-to" type="date"></label> <label>Data <select id="report-test"><option value="false">Real sales</option><option value="true">Test sales</option><option value="all">All sales</option></select></label> <label>Source <select id="report-source"><option value="">All sources</option><option value="order">Orders</option><option value="walk_in">Walk-in</option><option value="device">Device</option></select></label> <a id="report-export" class="btn" href="#">Export CSV</a><p id="report-breakdown"></p><div id="report-week"></div><div style="overflow:auto"><table><thead><tr><th>Transaction</th><th>Occurred (Manila)</th><th>Source</th><th>Payment</th><th>Food</th><th>Fee</th><th>Total</th><th>Actor</th></tr></thead><tbody id="report-feed"></tbody></table></div><button id="report-prev" type="button">Previous</button> <span id="report-page"></span> <button id="report-next" type="button">Next</button>';
+  (document.querySelector('main') || document.body).appendChild(panel);
+  const query = () => new URLSearchParams({ date: el('sales-date')?.value || today(), ...(el('report-from').value ? { from: el('report-from').value } : {}), ...(el('report-to').value ? { to: el('report-to').value } : {}), is_test: el('report-test').value, ...(el('report-source').value ? { source: el('report-source').value } : {}) });
 
   let controller, sequence = 0, hadData = false, inFlight = false;
 
@@ -34,19 +42,24 @@
     controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 7000);
 
-    const date = el('sales-date')?.value || today();
-    const token = localStorage.getItem('juflow_token');
-
     try {
-      const r = await fetch('/api/sales/summary?' + new URLSearchParams({ date }), {
+      const params = query();
+      const [d, feed] = await Promise.all([JuAPI.request('/sales/summary?' + params, {
         cache: 'no-store',
-        signal: controller.signal,
-        headers: token ? { 'Authorization': 'Bearer ' + token } : {}
-      });
-
-      if (!r.ok) throw new Error('Sales API unavailable');
-      const d = await r.json();
+        signal: controller.signal
+      }), JuAPI.request('/sales?' + params + '&page=' + page, { signal: controller.signal })]);
       if (request !== sequence) return;
+      el('report-export').href = '/api/sales/export.csv?' + params;
+      const cash = (d.by_payment || []).filter(p => ['cash', 'exact'].includes(p._id)).reduce((sum, p) => sum + p.total_centavos, 0);
+      const gcash = (d.by_payment || []).find(p => p._id === 'gcash')?.total_centavos || 0;
+      el('report-breakdown').textContent = `Food ${money(d.food_centavos)} | Fees ${money(d.fee_centavos)} | Cash / exact ${money(cash)} | GCash ${money(gcash)}. GCash verification is a cashier record, not provider proof.`;
+      const days = new Map((d.last_seven_days || []).map(day => [day._id, day.total_centavos]));
+      const selected = new Date((el('sales-date')?.value || today()) + 'T00:00:00Z');
+      el('report-week').textContent = 'Last seven days: ' + Array.from({ length: 7 }, (_, i) => { const date = new Date(selected.getTime() - (6 - i) * 86400000).toISOString().slice(0, 10); return date + ' ' + money(days.get(date)); }).join(' | ');
+      el('report-feed').innerHTML = (feed.items || []).map(s => '<tr>' + [s.transaction_id, new Date(s.sale_time).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }), s.source || 'legacy', s.payment_method, money(s.food_centavos ?? s.total_centavos), money(s.fee_centavos), money(s.total_centavos), s.recorded_by].map(value => '<td>' + E(value) + '</td>').join('') + '</tr>').join('');
+      el('report-page').textContent = `Page ${page} | ${feed.total} transactions`;
+      el('report-prev').disabled = page === 1;
+      el('report-next').disabled = page * feed.limit >= feed.total;
 
       // Update stat cards
       if (el('[data-stat="total_centavos"]') || document.querySelector('[data-stat="total_centavos"]')) {
@@ -73,8 +86,8 @@
       }
       if (el('sales-message')) {
         el('sales-message').textContent = d.transaction_count > 0
-          ? `${d.transaction_count} sale${d.transaction_count !== 1 ? 's' : ''} recorded today.`
-          : 'No sales recorded yet for today. Sales submitted by the cashier app will appear here.';
+          ? `${d.transaction_count} sale${d.transaction_count !== 1 ? 's' : ''} in the selected period.`
+          : 'No sales in the selected period.';
       }
       if (el('sales-updated')) {
         el('sales-updated').textContent = 'Last updated ' + new Date().toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila' }) + ' · Philippine time';
@@ -89,7 +102,7 @@
       }
       if (el('sales-message')) {
         el('sales-message').textContent = (hadData ? 'Showing last received values. ' : '') +
-          'Make sure the backend server is running (npm run dev in server/).';
+          e.message;
       }
     } finally {
       clearTimeout(timeout);
@@ -97,7 +110,10 @@
     }
   }
 
-  if (el('sales-date')) el('sales-date').onchange = () => { hadData = false; refresh(); };
+  if (el('sales-date')) el('sales-date').onchange = () => { page = 1; hadData = false; refresh(); };
+  ['report-from', 'report-to', 'report-test', 'report-source'].forEach(id => { el(id).onchange = () => { page = 1; refresh(); }; });
+  el('report-prev').onclick = () => { if (page > 1) { page--; refresh(); } };
+  el('report-next').onclick = () => { page++; refresh(); };
   if (el('refresh-sales')) el('refresh-sales').onclick = refresh;
 
   refresh();

@@ -108,11 +108,12 @@
     <script>
         async function loadDashboard() {
             try {
-                const user = window.JUFLOW_USER;
-                document.getElementById('welcomeMessage').textContent = `Welcome, ${user.name || user.email} (${user.role})`;
+                const user = window.JUFLOW_USER || {};
+                const displayName = user.full_name || user.username || user.name || user.email || 'User';
+                document.getElementById('welcomeMessage').textContent = `Welcome, ${displayName} (${user.role || 'Staff'})`;
 
                 // Load products
-                const products = await JuAPI.request('/products');
+                const products = await JuAPI.getProducts();
                 document.getElementById('totalProducts').textContent = products.length;
                 
                 const tbody = document.getElementById('productsTableBody');

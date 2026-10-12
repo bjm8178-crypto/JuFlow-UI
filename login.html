@@ -108,13 +108,15 @@
         </section>
     </main>
 
+    <script src="/api.js"></script>
     <script>
-        function safeNext(value) {
-            if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u0020\u007f]/.test(value)) return '/index.html';
+        function safeNext(value, user) {
+            const fallback = JuAPI.defaultRoute(user);
+            if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u0020\u007f]/.test(value)) return fallback;
             try {
                 const target = new URL(value, location.origin);
-                return target.origin === location.origin ? target.pathname + target.search + target.hash : '/index.html';
-            } catch (_) { return '/index.html'; }
+                return target.origin === location.origin && target.pathname !== '/login.html' && JuAPI.canAccess(target.pathname, user) ? target.pathname + target.search + target.hash : fallback;
+            } catch (_) { return fallback; }
         }
         const loginForm = document.getElementById('loginForm');
         const errorMessage = document.getElementById('errorMessage');
@@ -127,20 +129,15 @@
             errorMessage.classList.remove('visible');
             loadingOverlay.classList.add('visible');
             try {
-                const r = await fetch('/api/auth/login', {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify((v => ({ username: v, email: v, password: document.getElementById('password').value }))(document.getElementById('username').value.trim()))
-                });
-                if (r.ok) {
-                    location.replace(safeNext(new URLSearchParams(location.search).get('next')));
-                } else {
-                    const data = await r.json().catch(() => ({}));
-                    errorMessage.textContent = (['locked', 'account_locked', 'too_many_requests'].includes(data.error) || r.status === 429) ? 'Too many attempts. Please try again later.' : 'Invalid username/email or password.';
-                    errorMessage.classList.add('visible');
-                }
-            } catch (_) {
-                errorMessage.textContent = 'Cannot connect to the server. Please try again.';
+                const result = await JuAPI.login(document.getElementById('username').value.trim(), document.getElementById('password').value);
+                const user = result.user || result;
+                if (!['admin', 'cashier', 'rider'].includes(user?.role_name)) throw new Error('Access denied. Unsupported account role.');
+                location.replace(safeNext(new URLSearchParams(location.search).get('next'), user));
+            } catch (error) {
+                errorMessage.textContent = error.status === 429 || ['locked', 'account_locked', 'too_many_requests'].includes(error.code)
+                    ? 'Too many attempts. Please try again later.'
+                    : error.status === 401 ? 'Invalid username/email or password.'
+                    : error.status === 403 ? 'Access denied. Your account cannot sign in.' : error.message;
                 errorMessage.classList.add('visible');
             } finally {
                 button.disabled = false;
