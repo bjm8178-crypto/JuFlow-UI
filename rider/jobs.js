@@ -1,4 +1,4 @@
-// JuFlow Rider App - Jobs
+// JuKi Rider App - Jobs
 // The rider sees the customer's address and sets only two things: On the way, then Delivered.
 
 (function() {

@@ -1,4 +1,4 @@
-// JuFlow Rider App - Main Application Logic
+// JuKi Rider App - Main Application Logic
 // Hash-based routing with delivery management
 
 (function() {

@@ -1,4 +1,4 @@
-/* JuFlow Cashier — Me */
+/* JuKi Cashier — Me */
 (function () {
   'use strict';
 
@@ -14,7 +14,7 @@
         h('p', { class: 'muted', text: 'Cashier' })),
       h('div', { class: 'app-card' },
         h('button', { type: 'button', class: 'app-btn danger full', text: 'Sign out', onclick: () => auth.logout() }),
-        h('p', { class: 'muted small', style: 'text-align:center;margin-top:8px', text: 'JuFlow Cashier' })));
+        h('p', { class: 'muted small', style: 'text-align:center;margin-top:8px', text: 'JuKi Cashier' })));
   }
 
   router.register('/me', { title: 'Me', subtitle: () => 'Account', render });
