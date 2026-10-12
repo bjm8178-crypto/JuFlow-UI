@@ -1,4 +1,4 @@
-// JuFlow Rider App - Me/Profile Module
+// JuKi Rider App - Me/Profile Module
 // User profile, availability toggle, and app settings
 
 (function() {
@@ -128,7 +128,7 @@
       installSection.innerHTML = `
         <h3>📱 Install app</h3>
         <p style="margin:8px 0;color:var(--text-muted);font-size:14px;">
-          Install JuFlow Rider on your device for faster access and offline support.
+          Install JuKi Rider on your device for faster access and offline support.
         </p>
         <button class="app-btn primary" id="install-app-btn">Install app</button>
       `;
@@ -140,7 +140,7 @@
             state.installPromptEvent.prompt();
             const result = await state.installPromptEvent.userChoice;
             if (result.outcome === 'accepted') {
-              alert('App installed! Look for the JuFlow Rider icon on your home screen.');
+              alert('App installed! Look for the JuKi Rider icon on your home screen.');
               renderMe();
             }
           } else {
@@ -154,7 +154,7 @@
       installedSection.innerHTML = `
         <h3>✓ App installed</h3>
         <p style="color:var(--text-muted);font-size:14px;">
-          You're using the installed version of JuFlow Rider.
+          You're using the installed version of JuKi Rider.
         </p>
       `;
       main.appendChild(installedSection);
@@ -181,7 +181,7 @@
     signOutSection.innerHTML = `
       <button class="app-btn danger full" id="signout-btn">Sign out</button>
       <p style="text-align:center;margin-top:8px;color:var(--text-muted);font-size:12px;">
-        JuFlow Rider v1.0.0
+        JuKi Rider v1.0.0
       </p>
     `;
     main.appendChild(signOutSection);
@@ -192,7 +192,7 @@
         const queueSize = await outbox.getCount();
         const jobsSize = state.deliveries?.length || 0;
         
-        let message = 'Sign out of JuFlow Rider?';
+        let message = 'Sign out of JuKi Rider?';
         if (queueSize > 0 || jobsSize > 0) {
           message = `You have:\n`;
           if (queueSize > 0) message += `• ${queueSize} unsent event${queueSize === 1 ? '' : 's'}\n`;

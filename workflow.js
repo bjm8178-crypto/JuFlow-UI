@@ -142,10 +142,10 @@
   async function readPinFile(file) {
     if (!file) return;
     let data;
-    try { data = JSON.parse(await file.text()); } catch { throw Error('That file is not a JuFlow pin file.'); }
+    try { data = JSON.parse(await file.text()); } catch { throw Error('That file is not a JuKi pin file.'); }
     const ok = data && data.app === 'juflow' && data.type === 'customer-pin' && data.version === 1;
     const lat = data?.lat, lng = data?.lng;
-    if (!ok || typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw Error('That file is not a valid JuFlow pin file.');
+    if (!ok || typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw Error('That file is not a valid JuKi pin file.');
     const ref = data.customer || {};
     let match = ref.id && state.customers.find(c => c._id === ref.id);
     if (!match && digits(ref.phone).length >= 7) { const same = state.customers.filter(c => digits(c.phone) === digits(ref.phone)); if (same.length === 1) match = same[0]; }

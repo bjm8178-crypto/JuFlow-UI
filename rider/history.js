@@ -1,4 +1,4 @@
-// JuFlow Rider App - History Module
+// JuKi Rider App - History Module
 // Completed delivery history (last 30 days)
 
 (function() {

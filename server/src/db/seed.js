@@ -56,7 +56,7 @@ async function seed() {
     const adminUser = await db.collection('users').insertOne({
       username: 'admin',
       password_hash: adminPasswordHash,
-      full_name: 'Ju Kitchen Admin',
+      full_name: 'JuKi Admin',
       email: process.env.ADMIN_INITIAL_EMAIL || null,
       phone: '',
       role_id: 1,
@@ -146,7 +146,7 @@ async function seed() {
       { key: 'shop_longitude', value: '120.956218', group_name: 'location', description: 'Shop longitude coordinate (Marilao, Bulacan)', updated_by: adminUser.insertedId, ...timestamps() },
       { key: 'tax_rate', value: '12', group_name: 'finance', description: 'VAT percentage', updated_by: adminUser.insertedId, ...timestamps() },
       { key: 'test_mode', value: 'false', group_name: 'general', description: 'Test transaction mode', updated_by: adminUser.insertedId, ...timestamps() },
-      { key: 'business_name', value: 'Ju Kitchen', group_name: 'general', description: 'Business name', updated_by: adminUser.insertedId, ...timestamps() },
+      { key: 'business_name', value: 'JuKi', group_name: 'general', description: 'Business name', updated_by: adminUser.insertedId, ...timestamps() },
       { key: 'business_phone', value: '09000000000', group_name: 'general', description: 'Contact phone', updated_by: adminUser.insertedId, ...timestamps() },
       { key: 'business_address', value: 'Saog, Marilao, Bulacan, Philippines', group_name: 'general', description: 'Business address', updated_by: adminUser.insertedId, ...timestamps() },
       { key: 'timezone', value: 'Asia/Manila', group_name: 'general', description: 'Business timezone', updated_by: adminUser.insertedId, ...timestamps() },
