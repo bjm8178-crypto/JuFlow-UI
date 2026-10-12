@@ -207,6 +207,13 @@ for (const app of ['cashier', 'rider']) test(`${app} service worker precache ref
   }
 });
 
+test('rider PWA registers one scoped worker without duplicate route modules', async () => {
+  const app = await readFile(path.join(projectRoot, 'rider', 'app.js'), 'utf8');
+  assert.match(app, /navigator\.serviceWorker\.register\(appRoot \+ 'sw\.js'/);
+  assert.match(app, /pathname\.startsWith\('\/rider\/'\)/);
+  assert.doesNotMatch(app, /document\.createElement\('script'\)/);
+});
+
 test('rider shell uses existing shared styles, icons and app-first screen scripts', async () => {
   const html = await readFile(path.join(projectRoot, 'rider', 'index.html'), 'utf8');
   assert.match(html, /href="\/shared\/styles.css"/);

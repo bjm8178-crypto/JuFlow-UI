@@ -547,18 +547,20 @@
     router.navigate(window.location.hash);
   });
 
-  // Load route modules
-  const modules = ['jobs', 'history', 'me'];
-  modules.forEach(module => {
-    const script = document.createElement('script');
-    script.src = `${module}.js`;
-    script.defer = true;
-    document.head.appendChild(script);
-  });
+  // Route modules are loaded by index.html as deferred scripts.
+  // Do not dynamically import them again; duplicate listeners can send duplicate updates.
+
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    const appRoot = window.location.pathname.startsWith('/rider/') ? '/rider/' : '/';
+    navigator.serviceWorker.register(appRoot + 'sw.js', { scope: appRoot })
+      .catch(error => console.warn('Rider service worker registration failed', error));
+  }
 
   // App initialization
   async function init() {
     showConnecting();
+    registerServiceWorker();
     
     try {
       await outbox.init();
