@@ -44,3 +44,83 @@
 .serve-toggle{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500;margin:0;cursor:pointer}
 .serve-toggle input{accent-color:var(--orange);width:17px;height:17px;margin:0}
 @media(max-width:650px){.form-grid{grid-template-columns:1fr}.form-panel{padding:18px}.list-panel{padding:2px 16px}.form-actions .primary,.form-actions .secondary{flex:1}}
+
+/* ---- Cashier & Rider apps: phone-first, no sidebar ---- */
+.app-page{background:var(--bg);min-height:100vh;padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+.app-page.no-tabs{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.app-bar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;background:#fff;border-bottom:1px solid var(--border)}
+.app-bar .brand-mark{width:36px;height:38px;font-size:24px;border-radius:10px;flex-shrink:0}
+.app-title{flex:1;min-width:0}
+.app-title strong{display:block;font-size:16px;font-weight:650;letter-spacing:-.3px;line-height:1.2}
+.app-title small{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-bar .icon-button{width:44px;height:44px;border-radius:10px}
+.app-bar .icon-button:active{background:var(--orange-soft)}
+.app-main{max-width:720px;margin:0 auto;padding:16px 16px 24px}
+.app-status{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--muted);margin:0 0 6px}
+.app-section{margin:24px 0 10px}
+.app-section h2{font-size:16px}
+.app-hint{font-size:12px;color:var(--muted);margin:4px 0 0}
+.app-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 1px 2px #0000000a}
+.app-card h2{font-size:15px;margin-bottom:4px}
+.app-card p{font-size:12px;color:var(--muted);margin:6px 0}
+.app-btn{display:block;width:100%;min-height:48px;margin-top:12px;border:1px solid var(--border);border-radius:10px;background:#fff;font-size:14px;font-weight:650;color:var(--text)}
+.app-btn:disabled{opacity:.5;cursor:default}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0 4px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px}
+.toggle{appearance:none;-webkit-appearance:none;width:52px;height:32px;border-radius:99px;background:#d7dcd3;position:relative;transition:background .2s;flex-shrink:0;margin:0;cursor:pointer}
+.toggle:before{content:"";position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}
+.toggle:checked{background:var(--orange)}
+.toggle:checked:before{transform:translateX(20px)}
+.app-page .job-list{display:grid;gap:14px;margin:12px 0 0}
+.app-page .job-list>p{text-align:center;padding:28px 12px;color:var(--muted);font-size:13px;background:#fff;border:1px dashed #d7dcd3;border-radius:14px;margin:0}
+.app-page .job-card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 1px 2px #0000000a}
+.app-page .job-card h2{font-size:17px;letter-spacing:-.3px}
+.app-page .job-card p{font-size:13px;color:var(--muted);margin:4px 0;overflow-wrap:anywhere}
+.app-page .job-card h2+p{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--orange);background:var(--orange-soft);padding:3px 10px;border-radius:99px;margin:6px 0 10px}
+.app-page .job-card button{display:block;width:100%;min-height:48px;margin-top:12px;border:0;border-radius:10px;background:var(--orange);color:#fff;font-size:14px;font-weight:650;text-align:center}
+.app-page .job-card button::first-letter{text-transform:uppercase}
+.app-page .job-card button:disabled{opacity:.5;cursor:default}
+.app-page #pending .job-card button{background:#fff;color:#a52c23;border:1px solid var(--border)}
+.app-page .job-card select,.app-page .job-card input:not([type=checkbox]){width:100%;height:48px;border:1px solid #dce1d9;border-radius:10px;padding:0 12px;font-size:16px;background:#fff;color:var(--text);margin-top:8px}
+.app-page .job-card label{display:block;font-size:12px;font-weight:600;margin:14px 0 0}
+.app-page .job-card input[type=checkbox]{width:22px;height:22px;accent-color:var(--orange);vertical-align:middle;margin-left:8px}
+.app-page .job-card img{width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin:10px 0 4px;display:block}
+.app-page .job-card a{display:flex;align-items:center;justify-content:center;min-height:46px;margin-top:12px;border:1px solid var(--border);border-radius:10px;font-weight:600;font-size:13px}
+#pending:empty:before{content:"Nothing waiting to send.";display:block;text-align:center;padding:22px 12px;color:var(--muted);font-size:13px;background:#fff;border:1px dashed #d7dcd3;border-radius:14px}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#fff;border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:62px;font-size:11px;font-weight:600;color:var(--muted)}
+.tabbar a.active{color:var(--orange)}
+.tabbar .icon{width:22px;height:22px}
+.pill{font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;background:#eef4ed;color:var(--green);white-space:nowrap}
+.pill:empty{display:none}
+/* Cashier point of sale */
+.pos-main{max-width:1100px;margin:0 auto;padding:16px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+#menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.dish{background:#fff;border:2px solid var(--border);border-radius:14px;padding:8px;transition:border-color .15s,background .15s}
+.dish.on{border-color:var(--orange);background:#fffaf6}
+.dish img,.dish .ph{width:100%;aspect-ratio:1;object-fit:cover;border-radius:9px;background:#eef0ea;display:block}
+.dish-name{font-weight:650;font-size:13px;margin-top:8px;line-height:1.3}
+.dish-price{font-size:13px;color:var(--orange);font-weight:650;margin-top:2px}
+.dish .q{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.dish .q button{width:44px;height:44px;border:0;border-radius:10px;background:var(--orange-soft);color:var(--orange);font-size:22px;font-weight:600;line-height:1;padding:0}
+.dish .q strong{font-size:16px;min-width:24px;text-align:center}
+#cart{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;position:sticky;top:74px}
+#cart h2{font-size:16px;margin-bottom:8px}
+#cart .line{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+.cart-empty{color:var(--muted);font-size:13px;padding:8px 0}
+.cart-total{display:flex;justify-content:space-between;font-size:18px;font-weight:700;margin:14px 0 2px}
+#cart label{display:block;font-size:12px;font-weight:600;margin:14px 0 0}
+#cart input,#cart select{width:100%;height:48px;border:1px solid #dce1d9;border-radius:10px;padding:0 12px;font-size:16px;background:#fff;color:var(--text);margin-top:8px}
+#apply{width:100%;min-height:52px;margin-top:16px;font-size:15px}
+#apply:disabled{opacity:.6;cursor:default}
+.checkout-bar{display:none;position:fixed;left:12px;right:12px;bottom:calc(74px + env(safe-area-inset-bottom,0px));z-index:29;align-items:center;gap:12px;background:var(--orange);color:#fff;border-radius:14px;padding:12px 16px;box-shadow:0 8px 24px #bc512540}
+.checkout-bar strong{display:block;font-size:15px}
+.checkout-bar span{font-size:12px;opacity:.9}
+.checkout-bar a{margin-left:auto;color:#fff;font-weight:700;font-size:13px;padding:10px 16px;background:#ffffff2e;border-radius:10px}
+body.has-order .checkout-bar{display:flex}
+.login-card{max-width:360px;margin:10vh auto 0;padding:26px;display:grid;gap:10px}
+.login-card .brand{font-size:24px;margin-bottom:6px}
+.login-card h2{font-size:18px}
+.login-card input{height:48px;font-size:16px;border:1px solid #dce1d9;border-radius:10px;padding:0 13px;width:100%;color:var(--text)}
+.login-card .primary{min-height:50px;margin-top:6px}
+@media(max-width:900px){.pos-main{grid-template-columns:1fr}#cart{position:static}}
+@media(min-width:901px){.checkout-bar{display:none!important}}

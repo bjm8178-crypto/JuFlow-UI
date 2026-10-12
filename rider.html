@@ -1,3 +1,46 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Rider | JuFlow</title><link rel="stylesheet" href="styles.css"><script src="api.js"></script><script src="auth-guard.js"></script><script src="app.js" defer></script><script src="map-config.js" defer></script><script src="outbox.js" defer></script><script src="rider.js" defer></script>
-<style>.job-list{display:grid;gap:16px;margin:18px 0}.job-card,.tracking-panel{background:white;border:1px solid var(--border);border-radius:12px;padding:20px}.job-card p{margin:8px 0;color:var(--muted)}.job-card button,.tracking-panel button{padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--orange-soft);margin:8px 8px 0 0}.job-card img{max-width:100%;max-height:240px;display:block;border-radius:8px;margin:12px 0}.job-card a{display:inline-block;margin:10px 12px 10px 0}.workspace-status{margin:16px 0}button:disabled{opacity:.5;cursor:default}</style></head><body class="dashboard-page"><aside class="sidebar" id="sidebar"><a class="brand" href="rider.html">JuFlow</a><nav><p class="nav-heading">WORKSPACE</p><a class="nav-item active" href="rider.html">My deliveries</a></nav><button class="nav-item" id="signout">Sign out</button></aside><div class="dashboard-shell"><header class="topbar"><button class="mobile-toggle" aria-label="Toggle navigation" aria-expanded="false">Menu</button><span>Rider workspace</span><div class="profile"><strong></strong><small></small></div></header><main class="dashboard-content"><div class="page-heading"><h1>My deliveries</h1><button id="refresh">Refresh</button></div><p id="status" class="workspace-status" role="status" aria-live="polite">Checking session...</p><section class="tracking-panel"><h2>Location sharing</h2><p>Off by default. Shares only while this page is visible and online. Not background tracking.</p><label><input id="tracking" type="checkbox"> Share my live location</label><p id="location-status" role="status">Location sharing is off.</p><button id="send-location" disabled>Send latest location</button></section><section id="jobs" class="job-list" aria-label="Assigned deliveries"></section><h2>Saved pending submissions</h2><p>Retries retain their original UUID and version. Conflicts require review; no version is automatically replaced.</p><button id="retry">Retry pending submissions</button><section id="pending" class="job-list"></section></main></div><div id="toast" class="toast" role="status"></div></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#bc5125">
+<title>Rider | JuFlow</title>
+<link rel="stylesheet" href="styles.css">
+<script src="api.js"></script>
+<script src="auth-guard.js"></script>
+<script src="map-config.js" defer></script>
+<script src="outbox.js" defer></script>
+<script src="rider.js" defer></script>
+</head>
+<body class="app-page no-tabs">
+<header class="app-bar">
+  <span class="brand-mark">J<span>•</span></span>
+  <div class="app-title"><strong>My deliveries</strong><small id="who">Rider</small></div>
+  <button class="icon-button" id="refresh" type="button" aria-label="Refresh deliveries"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg></button>
+  <button class="icon-button" id="signout" type="button" aria-label="Sign out"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4H4v16h6m3-12 4 4-4 4m-5-4h13"/></svg></button>
+</header>
+
+<main class="app-main">
+  <p id="status" class="app-status" role="status" aria-live="polite">Checking session...</p>
+
+  <section class="app-card" style="margin-top:14px">
+    <h2>Location sharing</h2>
+    <p>Off by default. Shares only while this screen is open and online. It does not track you in the background.</p>
+    <label class="switch-row" for="tracking"><span>Share my live location</span><input id="tracking" class="toggle" type="checkbox" role="switch"></label>
+    <p id="location-status" role="status">Location sharing is off.</p>
+    <button class="app-btn" id="send-location" type="button" disabled>Send latest location</button>
+  </section>
+
+  <div class="app-section"><h2>Assigned deliveries</h2></div>
+  <section id="jobs" class="job-list" aria-label="Assigned deliveries"></section>
+
+  <div class="app-section"><h2>Waiting to send</h2><p class="app-hint">Actions saved on this phone that the server hasn’t confirmed yet. Conflicts need your review.</p></div>
+  <section id="pending" class="job-list"></section>
+  <button class="app-btn" id="retry" type="button">Retry pending submissions</button>
+</main>
+
+<script>
+JUFLOW_AUTH_READY.then(u => { if (u) document.getElementById('who').textContent = (u.full_name || u.username || 'Rider') + ' · Rider'; }).catch(() => {});
+</script>
+</body>
+</html>

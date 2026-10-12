@@ -1,5 +1,5 @@
-// Optional: insert a browser-restricted Google Maps JavaScript API key.
-// Restrict the key to the Maps JavaScript API and your localhost/HTTPS referrers.
+// Maps use Leaflet + OpenStreetMap tiles: free, no API key and no billing account.
+// The Google links below are plain URLs that open the Google Maps website/app; they need no key either.
 (() => {
   function coordinates(lat, lng) {
     return typeof lat === 'number' && Number.isFinite(lat) && Math.abs(lat) <= 90 &&
@@ -26,5 +26,5 @@
     const from = coordinates(origin?.lat, origin?.lng), to = coordinates(destination?.lat, destination?.lng);
     return from && to ? 'https://www.google.com/maps/dir/?' + new URLSearchParams({ api: '1', origin: `${from.lat},${from.lng}`, destination: `${to.lat},${to.lng}`, travelmode: 'driving' }) : null;
   }
-  window.JuMapConfig = { googleMapsApiKey: '', coordinates, shopFromSettings, loadShop, googleSearch, googleDirections };
+  window.JuMapConfig = { coordinates, shopFromSettings, loadShop, googleSearch, googleDirections };
 })();
