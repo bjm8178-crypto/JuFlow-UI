@@ -15,24 +15,46 @@
 
   let page = 1;
   const panel = document.createElement('section');
-  panel.className = 'panel';
-  panel.innerHTML = '<h2>Transaction reporting</h2><label>From <input id="report-from" type="date"></label> <label>Through <input id="report-to" type="date"></label> <label>Data <select id="report-test"><option value="false">Real sales</option><option value="true">Test sales</option><option value="all">All sales</option></select></label> <label>Source <select id="report-source"><option value="">All sources</option><option value="order">Orders</option><option value="walk_in">Walk-in</option><option value="device">Device</option></select></label> <a id="report-export" class="btn" href="#">Export CSV</a><p id="report-breakdown"></p><div id="report-week"></div><div style="overflow:auto"><table><thead><tr><th>Transaction</th><th>Occurred (Manila)</th><th>Source</th><th>Payment</th><th>Food</th><th>Fee</th><th>Total</th><th>Actor</th></tr></thead><tbody id="report-feed"></tbody></table></div><button id="report-prev" type="button">Previous</button> <span id="report-page"></span> <button id="report-next" type="button">Next</button>';
+  panel.className = 'panel report-panel';
+  panel.innerHTML = `
+    <div class="panel-heading report-heading">
+      <div><h2>Transaction reporting</h2><p>Filter, review and export completed transactions</p></div>
+      <a id="report-export" class="export-btn" href="#"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>Export CSV</a>
+    </div>
+    <div class="report-filters">
+      <label class="field"><span>From</span><input id="report-from" type="date"></label>
+      <label class="field"><span>Through</span><input id="report-to" type="date"></label>
+      <label class="field"><span>Data</span><select id="report-test"><option value="false">Real sales</option><option value="true">Test sales</option><option value="all">All sales</option></select></label>
+      <label class="field"><span>Source</span><select id="report-source"><option value="">All sources</option><option value="order">Orders</option><option value="walk_in">Walk-in</option><option value="device">Device</option></select></label>
+    </div>
+    <div id="report-breakdown" class="report-breakdown"></div>
+    <div class="report-week-wrap"><h3>Last seven days</h3><div id="report-week" class="week-bars"></div></div>
+    <div class="table-scroll"><table class="report-table"><thead><tr><th>Transaction</th><th>Occurred (Manila)</th><th>Source</th><th>Payment</th><th class="num">Food</th><th class="num">Fee</th><th class="num">Total</th><th>Actor</th></tr></thead><tbody id="report-feed"></tbody></table></div>
+    <div class="report-pager"><span id="report-page" role="status"></span><div class="pager-buttons"><button id="report-prev" type="button">&larr; Previous</button><button id="report-next" type="button">Next &rarr;</button></div></div>`;
   (document.querySelector('main') || document.body).appendChild(panel);
   const query = () => new URLSearchParams({ date: el('sales-date')?.value || today(), ...(el('report-from').value ? { from: el('report-from').value } : {}), ...(el('report-to').value ? { to: el('report-to').value } : {}), is_test: el('report-test').value, ...(el('report-source').value ? { source: el('report-source').value } : {}) });
 
   let controller, sequence = 0, hadData = false, inFlight = false;
 
+  function hourLabel(h) {
+    const suffix = h < 12 ? 'AM' : 'PM';
+    return (h % 12 || 12) + ' ' + suffix;
+  }
+
   function chart(byHour) {
     // byHour: array of { _id: hour (0-23), total: centavos }
     const values = Array(24).fill(0);
     (byHour || []).forEach(h => { values[h._id] = h.total || 0; });
-    const max = Math.max(...values, 1);
+    const peak = Math.max(...values);
+    const max = Math.max(peak, 1);
+    const peakHour = peak > 0 ? values.indexOf(peak) : -1;
     el('sales-chart').innerHTML =
-      '<div class="hour-bars" aria-label="Hourly sales">' +
+      '<div class="hour-bars" role="img" aria-label="Hourly sales">' +
       values.map((v, h) =>
-        `<div class="hour-column"><div title="${h}:00 · ${money(v)}" class="hour-bar" style="height:${Math.max(2, v / max * 140)}px"><span class="sr-only">${h}:00 ${money(v)}</span></div><small>${h % 4 === 0 ? h : ''}</small></div>`
+        `<div class="hour-column${h === peakHour ? ' peak' : ''}" title="${hourLabel(h)} · ${money(v)}"><div class="hour-bar${v ? '' : ' zero'}" style="height:${v ? Math.max(4, v / max * 100) : 0}%"><span class="sr-only">${hourLabel(h)} ${money(v)}</span></div><small>${h % 4 === 0 ? (h % 12 || 12) + (h < 12 ? 'a' : 'p') : ''}</small></div>`
       ).join('') +
-      `</div><p class="map-help">Peak hourly sales: ${money(Math.max(...values))}</p>`;
+      '</div>' +
+      `<p class="chart-peak">${peakHour >= 0 ? `Peak hour: <strong>${hourLabel(peakHour)}</strong> · ${money(peak)}` : 'No sales recorded for this day yet.'}</p>`;
   }
 
   async function refresh() {
@@ -54,13 +76,42 @@
       const gcash = (d.by_payment || []).find(p => p._id === 'gcash')?.total_centavos || 0;
       if (el('cash-sales')) el('cash-sales').textContent = money(cash);
       if (el('gcash-sales')) el('gcash-sales').textContent = money(gcash);
-      el('report-breakdown').textContent = `Food ${money(d.food_centavos)} | Fees ${money(d.fee_centavos)} | Cash / exact ${money(cash)} | GCash ${money(gcash)}. GCash verification is a cashier record, not provider proof.`;
+      el('report-breakdown').innerHTML = [
+        ['Food', money(d.food_centavos)],
+        ['Fees', money(d.fee_centavos)],
+        ['Cash / exact', money(cash)],
+        ['GCash', money(gcash)]
+      ].map(([label, value]) => `<div class="breakdown-item"><span>${label}</span><strong>${value}</strong></div>`).join('') +
+        '<p class="breakdown-note">GCash verification is a cashier record, not provider proof.</p>';
       const days = new Map((d.last_seven_days || []).map(day => [day._id, day.total_centavos]));
       const selected = new Date((el('sales-date')?.value || today()) + 'T00:00:00Z');
       document.querySelectorAll('[data-stat="last_7_days_centavos"]').forEach(n => { n.textContent = money((d.last_seven_days || []).reduce((s, x) => s + (x.total_centavos || 0), 0)); });
-      el('report-week').textContent = 'Last seven days: ' + Array.from({ length: 7 }, (_, i) => { const date = new Date(selected.getTime() - (6 - i) * 86400000).toISOString().slice(0, 10); return date + ' ' + money(days.get(date)); }).join(' | ');
-      el('report-feed').innerHTML = (feed.items || []).map(s => '<tr>' + [s.transaction_id, new Date(s.sale_time).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }), s.source || 'legacy', s.payment_method, money(s.food_centavos ?? s.total_centavos), money(s.fee_centavos), money(s.total_centavos), s.recorded_by].map(value => '<td>' + E(value) + '</td>').join('') + '</tr>').join('');
-      el('report-page').textContent = `Page ${page} | ${feed.total} transactions`;
+      const week = Array.from({ length: 7 }, (_, i) => {
+        const date = new Date(selected.getTime() - (6 - i) * 86400000);
+        const key = date.toISOString().slice(0, 10);
+        return { key, label: date.toLocaleDateString('en-PH', { weekday: 'short', timeZone: 'UTC' }), day: date.getUTCDate(), total: days.get(key) || 0 };
+      });
+      const weekMax = Math.max(...week.map(w => w.total), 1);
+      el('report-week').innerHTML = week.map((w, i) =>
+        `<div class="week-day${i === 6 ? ' current' : ''}" title="${w.key} · ${money(w.total)}"><div class="week-track"><i style="height:${w.total ? Math.max(6, w.total / weekMax * 100) : 0}%"></i></div><strong>${money(w.total)}</strong><span>${w.label} ${w.day}</span></div>`
+      ).join('');
+      const paymentLabel = { cash: 'Cash', exact: 'Cash (exact)', gcash: 'GCash' };
+      const rows = feed.items || [];
+      el('report-feed').innerHTML = rows.length ? rows.map(s => {
+        const method = String(s.payment_method || '').toLowerCase();
+        const when = new Date(s.sale_time).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        return '<tr>' +
+          '<td data-label="Transaction"><code>' + E(s.transaction_id) + '</code></td>' +
+          '<td data-label="Occurred (Manila)">' + E(when) + '</td>' +
+          '<td data-label="Source"><span class="chip">' + E(String(s.source || 'legacy').replace('_', ' ')) + '</span></td>' +
+          '<td data-label="Payment"><span class="chip pay-' + E(method) + '">' + E(paymentLabel[method] || s.payment_method || '—') + '</span></td>' +
+          '<td class="num" data-label="Food">' + E(money(s.food_centavos ?? s.total_centavos)) + '</td>' +
+          '<td class="num" data-label="Fee">' + E(money(s.fee_centavos)) + '</td>' +
+          '<td class="num total" data-label="Total">' + E(money(s.total_centavos)) + '</td>' +
+          '<td data-label="Actor">' + E(s.recorded_by || '—') + '</td></tr>';
+      }).join('') : '<tr class="empty-row"><td colspan="8"><div class="empty-state"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3v18h17M8 16v-4m5 4V8m5 8V5"/></svg><strong>No transactions found</strong><span>Try a different date range, data type, or source.</span></div></td></tr>';
+      const lastPage = Math.max(1, Math.ceil((feed.total || 0) / (feed.limit || 1)));
+      el('report-page').textContent = `Page ${page} of ${lastPage} · ${feed.total} transaction${feed.total === 1 ? '' : 's'}`;
       el('report-prev').disabled = page === 1;
       el('report-next').disabled = page * feed.limit >= feed.total;
 
@@ -79,9 +130,10 @@
 
       // Top products
       const topList = d.top_products || [];
+      const topMax = Math.max(...topList.map(p => p.units || 0), 1);
       el('top-products').innerHTML = topList.slice(0, 6).map((p, i) =>
-        `<div class="product-row"><span>${i + 1}</span><div><strong>${E(p._id)}</strong><small>${p.units} sold</small></div><strong>${money(p.revenue)}</strong></div>`
-      ).join('') || '<p class="empty">No food sales recorded for today.</p>';
+        `<div class="product-row"><span class="rank">${i + 1}</span><div class="product-info"><strong>${E(p._id)}</strong><small>${p.units} sold</small><div class="meter" aria-hidden="true"><i style="width:${Math.max(4, (p.units || 0) / topMax * 100)}%"></i></div></div><strong class="product-revenue">${money(p.revenue)}</strong></div>`
+      ).join('') || '<div class="empty-state"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13h16a8 8 0 0 0-16 0Zm-1 4h18M12 5V3"/></svg><strong>No food sales yet</strong><span>Items will rank here as soon as sales come in.</span></div>';
 
       if (el('sales-connection')) {
         el('sales-connection').textContent = 'Live · 10s refresh';
