@@ -41,8 +41,11 @@ async function createFrontendServer({ root = __dirname, apiPort = 3000 } = {}) {
       res.end();
       return;
     }
+    if (pathname === '/cashier' || pathname === '/cashier/') {
+      pathname = '/cashier/index.html';
+    }
     const filename = pathname.slice(1);
-    if (!pathname.startsWith('/') || !allowed.has(filename)) {
+    if (!pathname.startsWith('/') || (!allowed.has(filename) && filename !== 'cashier/index.html')) {
       res.writeHead(404); res.end(); return;
     }
     try {

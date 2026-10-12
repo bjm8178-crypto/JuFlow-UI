@@ -1,91 +1,138 @@
 import express from 'express';
-import { getDb, toObjectId, withTransaction } from '../db/mongodb.js';
+import { getDb, toObjectId } from '../db/mongodb.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { Binary } from 'mongodb';
 
-export function productUpdates(body, creating = false) {
-  const updates = {};
-  for (const field of ['name', 'description', 'photo_path', 'price_centavos', 'category_id', 'is_available', 'is_active']) {
-    if (body[field] === undefined) continue;
-    const value = body[field];
-    if (field === 'price_centavos') {
-      if (!Number.isSafeInteger(value) || value < 0) throw Object.assign(new Error('Price must be a non-negative safe integer in centavos'), { status: 400 });
-      updates[field] = value;
-    } else if (field === 'category_id') {
-      updates[field] = toObjectId(value);
-      if (!updates[field]) throw Object.assign(new Error('Valid category_id required'), { status: 400 });
-    } else if (field === 'is_available' || field === 'is_active') {
-      if (typeof value !== 'boolean') throw Object.assign(new Error(`${field} must be a boolean`), { status: 400 });
-      updates[field] = value;
-    } else {
-      if (value !== null && typeof value !== 'string') throw Object.assign(new Error(`${field} must be text`), { status: 400 });
-      updates[field] = value?.trim() || null;
-      if (field === 'name' && !updates[field]) throw Object.assign(new Error('Name required'), { status: 400 });
+const router = express.Router();
+
+// Returns { fields } or { error }. Used by POST (full) and PATCH (partial).
+function parse(body, partial) {
+  const f = {};
+  if (!partial || body.name !== undefined) {
+    if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 120) return { error: 'Name is required (max 120 chars)' };
+    f.name = body.name.trim(); f.name_key = f.name.toLowerCase();
+  }
+  if (!partial || body.price_centavos !== undefined) {
+    const p = Number(body.price_centavos);
+    if (!Number.isInteger(p) || p < 1 || p > 10_000_000) return { error: 'Price must be a whole number of centavos, at least 1' };
+    f.price_centavos = p;
+  }
+  if (body.description !== undefined) f.description = typeof body.description === 'string' ? body.description.trim().slice(0, 500) || null : null;
+  if (body.category_id !== undefined) f.category_id = body.category_id || null;
+  if (body.is_available !== undefined) f.is_available = body.is_available !== false;
+  return { fields: f };
+}
+
+// GET /api/products -> list active products (all authenticated users)
+router.get('/', authenticate, async (req, res, next) => {
+  try {
+    const list = await getDb().collection('products')
+      .find({ is_active: { $ne: false } }).sort({ name: 1 }).toArray();
+    res.json(list);
+  } catch (e) { next(e); }
+});
+
+// GET /api/products/:id -> one product
+router.get('/:id', authenticate, async (req, res, next) => {
+  try {
+    const id = toObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid_id' });
+    const p = await getDb().collection('products').findOne({ _id: id });
+    if (!p) return res.status(404).json({ error: 'not_found' });
+    res.json(p);
+  } catch (e) { next(e); }
+});
+
+// POST /api/products -> create new product (admin only)
+router.post('/', authenticate, requireRole('admin'), async (req, res, next) => {
+  try {
+    const { fields, error } = parse(req.body, false);
+    if (error) return res.status(400).json({ error: 'validation_error', message: error });
+    const db = getDb();
+    const dup = await db.collection('products').findOne({ name_key: fields.name_key, is_active: { $ne: false } });
+    if (dup) return res.status(409).json({ error: 'conflict', message: 'A dish with this name already exists' });
+    const doc = { ...fields, is_active: true, photo_path: null, created_at: new Date(), updated_at: new Date() };
+    const r = await db.collection('products').insertOne(doc);
+    res.status(201).json({ ...doc, _id: r.insertedId });
+  } catch (e) { next(e); }
+});
+
+// PATCH /api/products/:id -> edit product (admin only)
+router.patch('/:id', authenticate, requireRole('admin'), async (req, res, next) => {
+  try {
+    const id = toObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid_id' });
+    const { fields, error } = parse(req.body, true);
+    if (error) return res.status(400).json({ error: 'validation_error', message: error });
+    if (!Object.keys(fields).length) return res.status(400).json({ error: 'validation_error', message: 'No fields to update' });
+    const db = getDb();
+    if (fields.name_key) {
+      const dup = await db.collection('products').findOne({ _id: { $ne: id }, name_key: fields.name_key, is_active: { $ne: false } });
+      if (dup) return res.status(409).json({ error: 'conflict', message: 'A dish with this name already exists' });
     }
-  }
-  if (creating && (!updates.name || updates.price_centavos === undefined || !updates.category_id)) {
-    throw Object.assign(new Error('Name, price and category required'), { status: 400 });
-  }
-  if (!creating && !Object.keys(updates).length) throw Object.assign(new Error('No fields to update'), { status: 400 });
-  return updates;
-}
+    const updated = await db.collection('products').findOneAndUpdate(
+      { _id: id }, { $set: { ...fields, updated_at: new Date() } }, { returnDocument: 'after' }
+    );
+    if (!updated) return res.status(404).json({ error: 'not_found' });
+    res.json(updated);
+  } catch (e) { next(e); }
+});
 
-// A real write conflicts with category deletion, unlike a snapshot-only existence read.
-export async function lockProductCategory(db, session, categoryId) {
-  const category = await db.collection('categories').findOneAndUpdate(
-    { _id: categoryId }, { $inc: { integrity_revision: 1 } }, { session, returnDocument: 'after' }
-  );
-  if (!category) throw Object.assign(new Error('Referenced category does not exist'), { status: 400, code: 'invalid_category' });
-}
+// DELETE /api/products/:id -> soft delete + remove from today's menu (admin only)
+router.delete('/:id', authenticate, requireRole('admin'), async (req, res, next) => {
+  try {
+    const id = toObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid_id' });
+    const db = getDb();
+    const r = await db.collection('products').updateOne({ _id: id }, { $set: { is_active: false, updated_at: new Date() } });
+    if (!r.matchedCount) return res.status(404).json({ error: 'not_found' });
+    await db.collection('daily_menu').updateMany({}, { $pull: { product_ids: id } });
+    await db.collection('product_images').deleteOne({ _id: id });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
 
-export function createProductsRouter({ database = getDb, transaction = withTransaction, auth = authenticate, admin = requireRole('admin') } = {}) {
-  const router = express.Router();
-  const handleError = (error, res, next) => error.status
-    ? res.status(error.status).json({ error: error.code || 'validation_error', message: error.message }) : next(error);
-  router.get('/', auth, async (req, res, next) => {
-    try { res.json(await database().collection('products').find({ is_active: { $ne: false } }).sort({ name: 1 }).toArray()); }
-    catch (error) { next(error); }
-  });
-  router.get('/:id', auth, async (req, res, next) => {
-    try {
-      const id = toObjectId(req.params.id);
-      if (!id) return res.status(400).json({ error: 'invalid_id' });
-      const product = await database().collection('products').findOne({ _id: id });
-      if (!product) return res.status(404).json({ error: 'not_found' });
-      res.json(product);
-    } catch (error) { next(error); }
-  });
-  router.post('/', auth, admin, async (req, res, next) => {
-    try {
-      const values = productUpdates(req.body, true);
-      const product = await transaction(async (db, session) => {
-        await lockProductCategory(db, session, values.category_id);
-        const doc = { description: null, photo_path: null, is_active: true, is_available: true, ...values, created_at: new Date(), updated_at: new Date() };
-        const result = await db.collection('products').insertOne(doc, { session });
-        return { ...doc, _id: result.insertedId };
-      });
-      res.status(201).json(product);
-    } catch (error) { handleError(error, res, next); }
-  });
-  for (const method of ['patch', 'delete']) router[method]('/:id', auth, admin, async (req, res, next) => {
-    try {
-      const id = toObjectId(req.params.id);
-      if (!id) return res.status(400).json({ error: 'invalid_id' });
-      const updates = method === 'delete' ? { is_active: false } : productUpdates(req.body);
-      const product = await transaction(async (db, session) => {
-        const existing = await db.collection('products').findOne({ _id: id }, { session });
-        if (!existing) throw Object.assign(new Error('Product not found'), { status: 404, code: 'not_found' });
-        const categoryId = updates.category_id || toObjectId(existing.category_id);
-        if (!categoryId) throw Object.assign(new Error('Valid category required'), { status: 400 });
-        await lockProductCategory(db, session, categoryId);
-        if (existing.category_id && String(existing.category_id) !== String(categoryId)) {
-          await lockProductCategory(db, session, toObjectId(existing.category_id));
-        }
-        return db.collection('products').findOneAndUpdate({ _id: id }, { $set: { ...updates, updated_at: new Date() } }, { session, returnDocument: 'after' });
-      });
-      res.json(method === 'delete' ? { message: 'Product deactivated', product } : product);
-    } catch (error) { handleError(error, res, next); }
-  });
-  return router;
-}
+// POST /api/products/:id/image -> upload dish photo (admin only)
+// Stores the image inside MongoDB (collection: product_images) so you don't need S3.
+// Accepts: { data_url: "data:image/jpeg;base64,..." } (must be resized to <= 300 KB by the browser)
+router.post('/:id/image', authenticate, requireRole('admin'), async (req, res, next) => {
+  try {
+    const id = toObjectId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid_id' });
+    const { data_url } = req.body || {};
+    if (typeof data_url !== 'string') return res.status(400).json({ error: 'validation_error', message: 'data_url is required' });
+    const m = data_url.match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/);
+    if (!m) return res.status(400).json({ error: 'validation_error', message: 'Invalid data URL (only jpeg, png, webp)' });
+    const contentType = m[1];
+    const buf = Buffer.from(m[3], 'base64');
+    if (buf.length > 300 * 1024) return res.status(400).json({ error: 'too_large', message: 'Image must be under 300 KB' });
+    const db = getDb();
+    const product = await db.collection('products').findOne({ _id: id });
+    if (!product) return res.status(404).json({ error: 'not_found' });
+    await db.collection('product_images').updateOne(
+      { _id: id },
+      { $set: { content_type: contentType, data: new Binary(buf), updated_at: new Date() } },
+      { upsert: true }
+    );
+    const photoPath = `/api/products/${id}/image?v=${Date.now()}`;
+    await db.collection('products').updateOne({ _id: id }, { $set: { photo_path: photoPath, updated_at: new Date() } });
+    res.json({ photo_path: photoPath });
+  } catch (e) { next(e); }
+});
 
-export default createProductsRouter();
+// GET /api/products/:id/image -> serve dish photo (public/cached)
+router.get('/:id/image', async (req, res, next) => {
+  try {
+    const id = toObjectId(req.params.id);
+    if (!id) return res.status(400).end();
+    const row = await getDb().collection('product_images').findOne({ _id: id });
+    if (!row) return res.status(404).end();
+    res.set({
+      'Content-Type': row.content_type,
+      'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
+    });
+    res.send(row.data.buffer);
+  } catch (e) { next(e); }
+});
+
+export default router;

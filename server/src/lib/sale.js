@@ -21,8 +21,13 @@ export function validateSale(body, { now = new Date(), allowBackdating = true } 
     if (!name || name.length > 120) fail('Each item needs a name');
     const quantity = i.quantity, price = i.price_centavos;
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) fail('Invalid item quantity');
-    if (!Number.isInteger(price) || price < 0 || price > 10_000_000) fail('Invalid item price');
-    return { name, quantity, price_centavos: price };
+    if (!Number.isInteger(price) || price < 1 || price > 10_000_000) fail('Invalid item price');
+    let product_id = null;
+    if (i.product_id !== undefined && i.product_id !== null) {
+      if (typeof i.product_id !== 'string' || !/^[a-f0-9]{24}$/i.test(i.product_id)) fail('Invalid product_id');
+      product_id = i.product_id.toLowerCase();
+    }
+    return { name, quantity, price_centavos: price, ...(product_id ? { product_id } : {}) };
   });
 
   const computed = clean.reduce((s, i) => s + i.quantity * i.price_centavos, 0);

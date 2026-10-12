@@ -1,0 +1,44 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JuFlow Cashier</title>
+<style>*{box-sizing:border-box}body{font-family:system-ui,sans-serif;margin:0;background:#faf6f1;color:#222}header{display:flex;justify-content:space-between;padding:12px 16px;background:#fff;border-bottom:1px solid #ddd}
+main{display:grid;grid-template-columns:1fr 320px;gap:16px;padding:16px}@media(max-width:800px){main{grid-template-columns:1fr}}
+#menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}.card{background:#fff;border-radius:12px;padding:8px;box-shadow:0 1px 3px #0002}
+.card img,.ph{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;background:#eee;display:block}.q{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+button{font-size:18px;min-width:44px;min-height:44px;border:0;border-radius:8px;background:#e8e0d6;cursor:pointer}.go{background:#c2410c;color:#fff;width:100%;font-weight:600}
+#cart{background:#fff;border-radius:12px;padding:12px;height:fit-content}.line{display:flex;justify-content:space-between}#login{max-width:320px;margin:15vh auto;display:grid;gap:8px}input,select{font-size:16px;padding:10px;width:100%}</style></head><body>
+<form id="login" hidden><h2>Cashier login</h2><input id="u" placeholder="Username" autocomplete="username"><input id="p" type="password" placeholder="Password" autocomplete="current-password"><button class="go">Sign in</button><p id="le"></p></form>
+<div id="app" hidden><header><strong>JuFlow Cashier</strong><span><span id="net"></span> <a href="/cashier.html" style="margin-right:8px">Delivery queue</a><button id="out" style="min-height:32px;font-size:14px">Logout</button></span></header>
+<main><div id="menu"></div><aside id="cart"><h3>Order</h3><div id="lines"></div><hr><div class="line"><strong>Total</strong><strong id="tot">₱0.00</strong></div>
+<label>Payment<select id="pay"><option value="exact">Cash exact</option><option value="cash">Cash with change</option><option value="gcash">GCash</option></select></label>
+<input id="tend" type="number" step="0.01" placeholder="Cash received (₱)" hidden><input id="ref" placeholder="GCash reference" hidden>
+<p></p><button class="go" id="apply">Apply</button><p id="msg" role="status"></p></aside></main></div>
+<script>
+const $=id=>document.getElementById(id),peso=c=>'₱'+(c/100).toFixed(2);let dishes=[],qty={},tx=crypto.randomUUID();
+const api=async(u,o={})=>{const r=await fetch('/api'+u,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...o});const d=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(d.message||r.status);e.status=r.status;throw e}return d};
+const queue=()=>JSON.parse(localStorage.getItem('pending_sales')||'[]'),setQ=q=>localStorage.setItem('pending_sales',JSON.stringify(q));
+async function flush(){const q=queue(),left=[];for(const s of q){try{await api('/sales',{method:'POST',body:JSON.stringify(s)})}catch(e){if(!(e.status>=400&&e.status<500&&e.status!==401&&e.status!==429)&&e.status!==409)left.push(s)}}setQ(left);$('net').textContent=left.length?left.length+' unsent':'● online'}
+function total(){return dishes.reduce((s,d)=>s+(qty[d._id]||0)*d.price_centavos,0)}
+function draw(){const M=$('menu');M.textContent='';dishes.forEach(d=>{const c=document.createElement('div');c.className='card';
+c.append(d.photo_path?Object.assign(document.createElement('img'),{src:d.photo_path,alt:''}):Object.assign(document.createElement('div'),{className:'ph'}));
+const t=document.createElement('div');t.textContent=d.name;t.style.fontWeight='600';const p=document.createElement('div');p.textContent=peso(d.price_centavos);
+const q=document.createElement('div');q.className='q';const m=Object.assign(document.createElement('button'),{textContent:'−'}),n=document.createElement('strong'),a=Object.assign(document.createElement('button'),{textContent:'+'});
+n.textContent=qty[d._id]||0;m.onclick=()=>{qty[d._id]=Math.max(0,(qty[d._id]||0)-1);draw()};a.onclick=()=>{qty[d._id]=Math.min(99,(qty[d._id]||0)+1);draw()};q.append(m,n,a);c.append(t,p,q);M.append(c)});
+const L=$('lines');L.textContent='';dishes.filter(d=>qty[d._id]).forEach(d=>{const l=document.createElement('div');l.className='line';l.textContent=`${qty[d._id]} × ${d.name}`;const s=document.createElement('span');s.textContent=peso(qty[d._id]*d.price_centavos);l.append(s);L.append(l)});$('tot').textContent=peso(total())}
+$('pay').onchange=()=>{$('tend').hidden=$('pay').value!=='cash';$('ref').hidden=$('pay').value!=='gcash'};
+$('apply').onclick=async()=>{const items=dishes.filter(d=>qty[d._id]).map(d=>({product_id:d._id,name:d.name,quantity:qty[d._id],price_centavos:d.price_centavos}));
+if(!items.length){$('msg').textContent='Add at least one dish.';return}
+const sale={transaction_id:tx,items,total_centavos:total(),payment_method:$('pay').value};
+if(sale.payment_method==='cash'){sale.cash_tendered_centavos=Math.round(parseFloat($('tend').value||0)*100)}
+if(sale.payment_method==='gcash')sale.gcash_reference=$('ref').value;
+$('apply').disabled=true;try{await api('/sales',{method:'POST',body:JSON.stringify(sale)});$('msg').textContent='Sale recorded ✓'}
+catch(e){if(e.status>=400&&e.status<500&&e.status!==401&&e.status!==429){$('msg').textContent=e.message;$('apply').disabled=false;return}
+setQ([...queue(),sale]);$('msg').textContent='No connection — saved, will retry automatically.'}
+qty={};tx=crypto.randomUUID();$('tend').value='';$('ref').value='';$('apply').disabled=false;draw();flush()};
+async function start(){let me;try{me=(await api('/auth/me')).user}catch{$('login').hidden=false;$('app').hidden=true;return}
+if(!['cashier','admin'].includes(me.role_name)){$('le').textContent='This account cannot use the cashier app.';$('login').hidden=false;return}
+$('login').hidden=true;$('app').hidden=false;
+try{dishes=(await api('/menu/today')).dishes}catch(e){$('msg').textContent=e.message}
+if(!dishes.length)$('msg').textContent="No dishes set for today. Ask the admin to choose today's menu.";draw();flush();setInterval(flush,15000)}
+$('login').onsubmit=async e=>{e.preventDefault();try{await api('/auth/login',{method:'POST',body:JSON.stringify({username:$('u').value,password:$('p').value})});$('p').value='';start()}catch(er){$('le').textContent=er.message}};
+$('out').onclick=async()=>{await api('/auth/logout',{method:'POST'}).catch(()=>{});location.reload()};
+start();
+</script></body></html>

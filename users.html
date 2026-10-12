@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Users · JuFlow</title><link rel="stylesheet" href="styles.css"><script src="/auth-guard.js"></script>
+<style>.wrap{max-width:900px;margin:24px auto;padding:0 16px}form.f{display:grid;gap:8px;margin:16px 0}
+.row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #eee;flex-wrap:wrap}.row .grow{flex:1;min-width:180px}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:#eee}.off{opacity:.55}</style></head>
+<body><div class="wrap"><p><a href="dashboard.html">← Dashboard</a></p><h1>Users</h1>
+<p>Create the accounts your staff use to sign in. Cashiers sign in at the cashier app; admins use this website.</p>
+<form class="f panel" id="f" autocomplete="off"><h2>New account</h2>
+<label>Full name<input id="full_name" maxlength="120" required></label>
+<label>Username<input id="username" maxlength="60" required autocomplete="off"></label>
+<label>Password (at least 8 characters)<input id="password" type="password" minlength="8" required autocomplete="new-password"></label>
+<label>Role<select id="role"><option value="2">Cashier</option><option value="1">Admin</option><option value="3">Rider</option></select></label>
+<label id="phoneRow" hidden>Phone number (required for riders)<input id="phone" maxlength="30" inputmode="tel"></label>
+<button class="primary" id="save">Create account</button><p id="msg" role="status"></p></form>
+<h2>Accounts</h2><div id="list"></div></div>
+<script>
+const $=id=>document.getElementById(id);
+const api=async(u,o={})=>{const r=await fetch('/api'+u,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...o});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||r.status);return d};
+const say=t=>$('msg').textContent=t;
+let me=null;
+function btn(label,fn){const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=label;b.onclick=fn;return b}
+async function load(){
+ let users;try{users=await api('/users')}catch(e){$('list').textContent='Could not load users: '+e.message;return}
+ const L=$('list');L.textContent='';
+ if(!users.length){L.textContent='No accounts yet.';return}
+ users.forEach(u=>{
+  const row=document.createElement('div');row.className='row'+(u.is_active===false?' off':'');
+  const g=document.createElement('div');g.className='grow';
+  const n=document.createElement('strong');n.textContent=u.full_name||u.username;
+  const s=document.createElement('small');s.textContent=' @'+u.username;
+  g.append(n,s);
+  const t=document.createElement('span');t.className='tag';t.textContent=(u.role_name||'?')+(u.is_active===false?' · disabled':'');
+  row.append(g,t);
+  const self=me&&String(u._id)===String(me._id||me.id);
+  row.append(btn('Reset password',async()=>{
+   const p=prompt('New password for '+u.username+' (at least 8 characters):');if(p===null)return;
+   if(p.length<8){say('Password must be at least 8 characters.');return}
+   try{await api('/users/'+encodeURIComponent(u._id)+'/reset-password',{method:'POST',body:JSON.stringify({new_password:p})});say('Password changed for '+u.username+'.')}catch(e){say(e.message)}
+  }));
+  if(!self)row.append(btn(u.is_active===false?'Enable':'Disable',async()=>{
+   if(u.is_active!==false&&!confirm('Disable '+u.username+'? They will be signed out.'))return;
+   try{await api('/users/'+encodeURIComponent(u._id),{method:'PATCH',body:JSON.stringify({is_active:u.is_active===false})});say('Updated '+u.username+'.');load()}catch(e){say(e.message)}
+  }));
+  L.append(row);
+ });
+}
+$('role').onchange=()=>{const r=$('role').value==='3';$('phoneRow').hidden=!r;$('phone').required=r};
+$('f').onsubmit=async e=>{e.preventDefault();$('save').disabled=true;
+ try{
+  const body={full_name:$('full_name').value.trim(),username:$('username').value.trim(),password:$('password').value,role_id:Number($('role').value)};
+  const phone=$('phone').value.trim();
+  const made=await api('/users',{method:'POST',body:JSON.stringify(body)});
+  if(body.role_id===3){
+   try{await api('/riders',{method:'POST',body:JSON.stringify({full_name:body.full_name,phone,user_id:made._id})})}
+   catch(re){$('f').reset();$('role').onchange();say('Account created for '+body.username+', but the rider profile was not saved ('+re.message+'). Disable this account, then create the rider again with a different username.');load();return}
+  }
+  $('f').reset();$('role').onchange();say('Account created for '+body.username+'.');load();
+ }catch(er){say(er.message)}finally{$('save').disabled=false}};
+(async()=>{try{me=(await api('/auth/me')).user}catch(_){}load()})();
+</script></body></html>

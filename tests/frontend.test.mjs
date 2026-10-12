@@ -5,7 +5,7 @@ import { mkdtemp, writeFile, mkdir, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { FRONTEND_FILES, buildFrontend, checkFrontend, projectRoot } from '../scripts/build-frontend.mjs';
+import { FRONTEND_DIRS, FRONTEND_FILES, buildFrontend, checkFrontend, projectRoot } from '../scripts/build-frontend.mjs';
 const { createFrontendServer } = createRequire(import.meta.url)('../serve.js');
 
 test('build copies only explicit assets and removes stale output', async (t) => {
@@ -42,7 +42,9 @@ test('current HTML local links and scripts are all allowlisted', async () => {
     for (const match of html.matchAll(/(?:src|href)=["']([^"']+)["']/g)) {
       const reference = match[1];
       if (/^(?:https?:|data:|#|mailto:)/.test(reference)) continue;
-      assert.ok(FRONTEND_FILES.includes(reference.replace(/^\//, '').split(/[?#]/)[0]), `${name}: ${reference}`);
+      const target = reference.replace(/^\//, '').split(/[?#]/)[0];
+      if (FRONTEND_DIRS.some((dir) => target === dir + '/' || target.startsWith(dir + '/'))) continue;
+      assert.ok(FRONTEND_FILES.includes(target), `${name}: ${reference}`);
     }
   }
 });

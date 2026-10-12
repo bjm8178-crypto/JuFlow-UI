@@ -78,11 +78,11 @@
                         </div>
                         <div class="stat">
                             <span class="stat-label">API Server</span>
-                            <span class="stat-value">Same-origin Python server</span>
+                            <span class="stat-value">Node API (Render) via Vercel rewrite</span>
                         </div>
                         <div class="stat">
                             <span class="stat-label">Environment</span>
-                            <span class="stat-value">Development</span>
+                            <span class="stat-value">Production</span>
                         </div>
                     </div>
                 </div>
@@ -92,6 +92,7 @@
 
     <script>
         const API_URL = '/api';
+        const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         window.JUFLOW_AUTH_READY.then(user => { if (user) loadDashboard(); });
 
         async function loadDashboard() {
@@ -125,13 +126,10 @@
         }
 
         async function apiCall(endpoint, method = 'GET', body = null, throwOnError = true) {
-            const token = localStorage.getItem('juflow_token');
             const options = {
                 method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(token ? { 'Authorization': 'Bearer ' + token } : {})
-                }
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' }
             };
             if (body) options.body = JSON.stringify(body);
 
@@ -163,8 +161,8 @@
             container.innerHTML = products.slice(0, 5).map(p => `
                 <div class="list-item">
                     <div>
-                        <div style="font-weight:600;">${escapeHtml(p.name)}</div>
-                        <div style="font-size:12px;color:#666;">₱${((Number(p.price_centavos) || 0) / 100).toFixed(2)}</div>
+                        <div style="font-weight:600;">${esc(p.name)}</div>
+                        <div style="font-size:12px;color:#666;">₱${(Number(p.price_centavos) / 100).toFixed(2)}</div>
                     </div>
                     <span class="badge ${p.is_available ? '' : 'inactive'}">
                         ${p.is_available ? 'Available' : 'Unavailable'}
@@ -182,8 +180,8 @@
             container.innerHTML = riders.map(r => `
                 <div class="list-item">
                     <div>
-                        <div style="font-weight:600;">${escapeHtml(r.full_name)}</div>
-                        <div style="font-size:12px;color:#666;">${escapeHtml(r.phone)}</div>
+                        <div style="font-weight:600;">${esc(r.full_name)}</div>
+                        <div style="font-size:12px;color:#666;">${esc(r.phone)}</div>
                     </div>
                     <span class="badge ${r.is_active ? '' : 'inactive'}">
                         ${r.is_active ? 'Active' : 'Inactive'}
@@ -201,8 +199,8 @@
             container.innerHTML = zones.map(z => `
                 <div class="list-item">
                     <div>
-                        <div style="font-weight:600;">${escapeHtml(z.name)}</div>
-                        <div style="font-size:12px;color:#666;">₱${((Number(z.fee_centavos) || 0) / 100).toFixed(2)} delivery</div>
+                        <div style="font-weight:600;">${esc(z.name)}</div>
+                        <div style="font-size:12px;color:#666;">₱${(Number(z.fee_centavos) / 100).toFixed(2)} delivery</div>
                     </div>
                     <span class="badge ${z.is_active ? '' : 'inactive'}">
                         ${z.is_active ? 'Active' : 'Inactive'}
@@ -219,8 +217,8 @@
             }
             container.innerHTML = settings.slice(0, 5).map(s => `
                 <div class="stat">
-                    <span class="stat-label">${escapeHtml(s.key)}</span>
-                    <span class="stat-value">${escapeHtml(typeof s.value === 'object' ? JSON.stringify(s.value) : s.value)}</span>
+                    <span class="stat-label">${esc(s.key)}</span>
+                    <span class="stat-value">${esc(s.value)}</span>
                 </div>
             `).join('');
         }

@@ -131,8 +131,12 @@ export async function createIndexes(database = getDb()) {
 
     // Products
     await db.collection('products').createIndex({ category_id: 1 });
+    await db.collection('products').createIndex({ name_key: 1 });
     await db.collection('products').createIndex({ is_available: 1 });
     await db.collection('products').createIndex({ is_active: 1 });
+
+    // Daily menu
+    await db.collection('daily_menu').createIndex({ date: 1 }, { unique: true });
 
     // Deliveries
     await db.collection('deliveries').createIndex({ order_id: 1 }, { unique: true, sparse: true });

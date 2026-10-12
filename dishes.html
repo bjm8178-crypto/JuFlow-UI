@@ -1,0 +1,32 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dishes · JuFlow</title><link rel="stylesheet" href="styles.css"><script src="/auth-guard.js"></script>
+<style>.wrap{max-width:900px;margin:24px auto;padding:0 16px}.row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #eee}
+.row img,.ph{width:56px;height:56px;object-fit:cover;border-radius:8px;background:#eee}.row .grow{flex:1}form.f{display:grid;gap:8px;margin:16px 0}</style></head>
+<body><div class="wrap"><p><a href="dashboard.html">← Dashboard</a></p><h1>Dishes</h1>
+<form class="f panel" id="f"><input type="hidden" id="id"><label>Dish name<input id="name" maxlength="120" required></label>
+<label>Price (₱)<input id="price" type="number" min="0.01" step="0.01" required></label>
+<label>Picture<input id="file" type="file" accept="image/jpeg,image/png,image/webp"></label>
+<button class="primary" id="save">Save dish</button> <button type="button" class="secondary" id="reset" hidden>Cancel edit</button><p id="msg" role="status"></p></form>
+<h2>Menu for today <small id="today"></small></h2><div id="list"></div><button class="primary" id="saveMenu">Save today's menu</button></div>
+<script>
+const $=id=>document.getElementById(id);let dishes=[],picked=new Set();
+const api=async(u,o={})=>{const r=await fetch('/api'+u,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...o});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||r.status);return d};
+const say=t=>$('msg').textContent=t;
+function resize(file){return new Promise((ok,no)=>{const img=new Image();img.onload=()=>{const s=Math.min(1,480/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);ok(c.toDataURL('image/webp',.8))};img.onerror=no;img.src=URL.createObjectURL(file)})}
+async function load(){dishes=await api('/products');const m=await api('/menu/today');$('today').textContent='('+m.date+')';picked=new Set(m.dishes.map(d=>d._id));render()}
+function render(){const L=$('list');L.textContent='';dishes.forEach(d=>{const r=document.createElement('div');r.className='row';
+const im=d.photo_path?Object.assign(document.createElement('img'),{src:d.photo_path,alt:''}):Object.assign(document.createElement('div'),{className:'ph'});
+const n=document.createElement('div');n.className='grow';n.textContent=d.name+' · ₱'+(d.price_centavos/100).toFixed(2);
+const cb=Object.assign(document.createElement('input'),{type:'checkbox',checked:picked.has(d._id)});cb.onchange=()=>cb.checked?picked.add(d._id):picked.delete(d._id);
+const lab=document.createElement('label');lab.append(cb,' Serve today');
+const e=Object.assign(document.createElement('button'),{textContent:'Edit',className:'secondary'});e.onclick=()=>{$('id').value=d._id;$('name').value=d.name;$('price').value=(d.price_centavos/100).toFixed(2);$('reset').hidden=false;scrollTo(0,0)};
+const x=Object.assign(document.createElement('button'),{textContent:'Delete',className:'secondary'});x.onclick=async()=>{if(!confirm('Delete '+d.name+'?'))return;try{await api('/products/'+d._id,{method:'DELETE'});picked.delete(d._id);await load()}catch(er){say(er.message)}};
+r.append(im,n,lab,e,x);L.append(r)})}
+$('f').onsubmit=async ev=>{ev.preventDefault();say('Saving…');try{const body=JSON.stringify({name:$('name').value,price_centavos:Math.round(parseFloat($('price').value)*100)});
+const id=$('id').value;const d=id?await api('/products/'+id,{method:'PATCH',body}):await api('/products',{method:'POST',body});
+if($('file').files[0])await api('/products/'+d._id+'/image',{method:'POST',body:JSON.stringify({data_url:await resize($('file').files[0])})});
+$('f').reset();$('id').value='';$('reset').hidden=true;say('Saved.');await load()}catch(er){say(er.message)}};
+$('reset').onclick=()=>{$('f').reset();$('id').value='';$('reset').hidden=true};
+$('saveMenu').onclick=async()=>{try{await api('/menu/today',{method:'PUT',body:JSON.stringify({product_ids:[...picked]})});say("Today's menu saved. Cashiers will see it now.")}catch(er){say(er.message)}};
+JUFLOW_AUTH_READY.then(u=>{if(u&&u.role_name!=='admin')location.replace('/cashier/');else if(u)load().catch(er=>say(er.message))});
+</script></body></html>

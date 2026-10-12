@@ -106,10 +106,12 @@ import ridersRoutes from './routes/riders.js';
 import settingsRoutes from './routes/settings.js';
 import deliveryZonesRoutes from './routes/delivery-zones.js';
 import productsRoutes from './routes/products.js';
+import menuRoutes from './routes/menu.js';
 
 // Phase 2 routes (Menu, Customers, Orders)
 import categoriesRoutes from './routes/categories.js';
 import customersRoutes from './routes/customers.js';
+import mediaRoutes, { customerLandmarkRouter } from './routes/media.js';
 import ordersRoutes from './routes/orders.js';
 
 // Phase 3 routes (Sales, Deliveries)
@@ -125,9 +127,12 @@ app.use('/api/riders', ridersRoutes);
 
 // Menu
 app.use('/api/products', productsRoutes);
+app.use('/api/menu', menuRoutes);
 app.use('/api/categories', categoriesRoutes);
 
-// Customers
+// Customers (landmark photo routes are mounted first so /:id/landmark is matched here)
+app.use('/api/customers/:customerId/landmark', customerLandmarkRouter);
+app.use('/api/media', mediaRoutes);
 app.use('/api/customers', customersRoutes);
 
 // Orders

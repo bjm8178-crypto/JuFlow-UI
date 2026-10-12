@@ -52,9 +52,12 @@
       el('report-export').href = '/api/sales/export.csv?' + params;
       const cash = (d.by_payment || []).filter(p => ['cash', 'exact'].includes(p._id)).reduce((sum, p) => sum + p.total_centavos, 0);
       const gcash = (d.by_payment || []).find(p => p._id === 'gcash')?.total_centavos || 0;
+      if (el('cash-sales')) el('cash-sales').textContent = money(cash);
+      if (el('gcash-sales')) el('gcash-sales').textContent = money(gcash);
       el('report-breakdown').textContent = `Food ${money(d.food_centavos)} | Fees ${money(d.fee_centavos)} | Cash / exact ${money(cash)} | GCash ${money(gcash)}. GCash verification is a cashier record, not provider proof.`;
       const days = new Map((d.last_seven_days || []).map(day => [day._id, day.total_centavos]));
       const selected = new Date((el('sales-date')?.value || today()) + 'T00:00:00Z');
+      document.querySelectorAll('[data-stat="last_7_days_centavos"]').forEach(n => { n.textContent = money((d.last_seven_days || []).reduce((s, x) => s + (x.total_centavos || 0), 0)); });
       el('report-week').textContent = 'Last seven days: ' + Array.from({ length: 7 }, (_, i) => { const date = new Date(selected.getTime() - (6 - i) * 86400000).toISOString().slice(0, 10); return date + ' ' + money(days.get(date)); }).join(' | ');
       el('report-feed').innerHTML = (feed.items || []).map(s => '<tr>' + [s.transaction_id, new Date(s.sale_time).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }), s.source || 'legacy', s.payment_method, money(s.food_centavos ?? s.total_centavos), money(s.fee_centavos), money(s.total_centavos), s.recorded_by].map(value => '<td>' + E(value) + '</td>').join('') + '</tr>').join('');
       el('report-page').textContent = `Page ${page} | ${feed.total} transactions`;
@@ -81,7 +84,7 @@
       ).join('') || '<p class="empty">No food sales recorded for today.</p>';
 
       if (el('sales-connection')) {
-        el('sales-connection').textContent = 'Live · 3s refresh';
+        el('sales-connection').textContent = 'Live · 10s refresh';
         el('sales-connection').className = 'badge blue';
       }
       if (el('sales-message')) {
@@ -119,7 +122,7 @@
   refresh();
   const timer = setInterval(() => {
     if (!document.hidden && !inFlight) refresh();
-  }, 3000);
+  }, 10000);
   window.addEventListener('focus', refresh);
   window.addEventListener('pagehide', () => { clearInterval(timer); controller?.abort(); });
 })();
