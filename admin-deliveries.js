@@ -18,7 +18,14 @@
   const photo = D.mediaURL(c.landmark_photo || c.landmark_photo_url);
   if (photo) { const b = text('button','View landmark photo',box); b.className = 'secondary'; b.onclick = () => { const image = el('delivery-landmark-image'); image.src = photo; image.onerror = () => { image.removeAttribute('src'); el('landmark-status').textContent = 'Landmark photo unavailable or access denied.'; }; el('landmark-status').textContent = ''; el('delivery-landmark-dialog').showModal(); }; }
  }
- function fit() { if (map && points.length) map.fitBounds(points,{padding:[35,35],maxZoom:16}); }
+  const DEFAULT_VIEW = { center: [14.763649, 120.956218], zoom: 14 }; // Marilao, Bulacan; used when there are no pins to fit
+  function fit() {
+   if (!map) return;
+   map.invalidateSize();
+   if (points.length) map.fitBounds(points,{padding:[35,35],maxZoom:16});
+   else map.setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+  }
+
  function render() {
   el('delivery-count').textContent = active.length + ' active deliveries';
   const list = el('delivery-list'); list.replaceChildren(); text('h2','Active destinations',list);
@@ -57,7 +64,16 @@
  document.addEventListener('visibilitychange',() => { clearTimeout(timer); if (!document.hidden) refresh(); });
  try {
   const user = await window.JUFLOW_AUTH_READY; if (!user) return;
-  if (window.L && window.location.protocol !== 'file:') { map = L.map('delivery-map'); L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'OpenStreetMap contributors'}).addTo(map).on('tileerror',() => { mapError = 'Map imagery unavailable; delivery list remains available.'; render(); }); layer = L.layerGroup().addTo(map); }
+   if (window.L && window.location.protocol !== 'file:') {
+    map = L.map('delivery-map').setView(DEFAULT_VIEW.center, DEFAULT_VIEW.zoom);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'}).addTo(map).on('tileerror',() => { mapError = 'Map imagery unavailable; delivery list remains available.'; render(); });
+    layer = L.layerGroup().addTo(map);
+    // The container can be measured before layout settles; re-measure so tiles fill it.
+    setTimeout(() => map.invalidateSize(), 0);
+    window.addEventListener('load', () => map.invalidateSize());
+    window.addEventListener('resize', () => map.invalidateSize());
+   }
+
   else mapError = 'Map library unavailable; delivery list remains available.';
   await refresh(); fit();
  } catch (error) { el('poll-status').textContent = 'Authentication unavailable: ' + error.message; }
