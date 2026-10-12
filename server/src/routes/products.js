@@ -11,7 +11,7 @@ router.get('/', async (req, res, next) => {
   try {
     const db = getDb();
     const products = await db.collection('products')
-      .find({})
+      .find({ is_active: { $ne: false } })
       .sort({ name: 1 })
       .toArray();
 
@@ -60,17 +60,18 @@ router.post('/', authenticate, requireRole('admin'), async (req, res, next) => {
     } = req.body;
 
     // Validation
-    if (!name || !price_centavos) {
+    if (!name || price_centavos === undefined || price_centavos === null) {
       return res.status(400).json({
         error: 'validation_error',
         message: 'Name and price are required'
       });
     }
 
-    if (price_centavos < 0) {
+    const parsedPrice = parseInt(price_centavos);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
       return res.status(400).json({
         error: 'validation_error',
-        message: 'Price must be positive'
+        message: 'Price must be a non-negative integer (centavos)'
       });
     }
 
@@ -78,7 +79,7 @@ router.post('/', authenticate, requireRole('admin'), async (req, res, next) => {
       category_id: category_id || null,
       name: name.trim(),
       description: description?.trim() || null,
-      price_centavos: parseInt(price_centavos),
+      price_centavos: parsedPrice,
       is_available: is_available !== false,
       is_active: true,
       photo_path: photo_path || null,
@@ -116,10 +117,10 @@ router.patch('/:id', authenticate, requireRole('admin'), async (req, res, next) 
       if (req.body[field] !== undefined) {
         if (field === 'price_centavos') {
           const price = parseInt(req.body[field]);
-          if (price < 0) {
+          if (isNaN(price) || price < 0) {
             return res.status(400).json({
               error: 'validation_error',
-              message: 'Price must be positive'
+              message: 'Price must be a non-negative integer (centavos)'
             });
           }
           updates[field] = price;

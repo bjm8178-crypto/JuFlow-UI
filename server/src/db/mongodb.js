@@ -30,10 +30,10 @@ export async function connect() {
 
     console.log('✅ MongoDB connected successfully');
     console.log(`   Database: ${DB_NAME}`);
-    
+
     // Create indexes
     await createIndexes();
-    
+
     return db;
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
@@ -72,40 +72,49 @@ async function createIndexes() {
     await db.collection('users').createIndex({ username: 1 }, { unique: true });
     await db.collection('users').createIndex({ email: 1 }, { unique: true, sparse: true });
     await db.collection('users').createIndex({ role_id: 1 });
-    
-    // Auth sessions
+
+    // Auth sessions with TTL expiration index
     await db.collection('auth_sessions').createIndex({ token_hash: 1 }, { unique: true });
     await db.collection('auth_sessions').createIndex({ user_id: 1 });
-    await db.collection('auth_sessions').createIndex({ expires_at: 1 });
-    
+    await db.collection('auth_sessions').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
+
     // Riders
     await db.collection('riders').createIndex({ phone: 1 });
     await db.collection('riders').createIndex({ is_active: 1 });
-    
+
     // Customers
     await db.collection('customers').createIndex({ phone: 1 });
-    await db.collection('customers').createIndex({ location: '2dsphere' });
-    
+    await db.collection('customers').createIndex({ is_active: 1 });
+
     // Orders
     await db.collection('orders').createIndex({ order_number: 1 }, { unique: true });
     await db.collection('orders').createIndex({ customer_id: 1 });
     await db.collection('orders').createIndex({ status: 1 });
     await db.collection('orders').createIndex({ created_at: -1 });
-    
+
+    // Categories
+    await db.collection('categories').createIndex({ name: 1 }, { unique: true });
+
     // Products
     await db.collection('products').createIndex({ category_id: 1 });
     await db.collection('products').createIndex({ is_available: 1 });
-    
+    await db.collection('products').createIndex({ is_active: 1 });
+
+    // Deliveries
+    await db.collection('deliveries').createIndex({ order_id: 1 }, { unique: true, sparse: true });
+    await db.collection('deliveries').createIndex({ status: 1 });
+
+    // Delivery zones
+    await db.collection('delivery_zones').createIndex({ sort_order: 1 });
+
+    // Settings
+    await db.collection('settings').createIndex({ key: 1 }, { unique: true });
+
     // Sales
+    await db.collection('sales').createIndex({ transaction_id: 1 }, { unique: true, sparse: true });
     await db.collection('sales').createIndex({ sale_time: -1 });
     await db.collection('sales').createIndex({ is_test_sale: 1 });
-    
-    // Inventory
-    await db.collection('inventory_items').createIndex({ item_name: 1 });
-    
-    // Expenses
-    await db.collection('expenses').createIndex({ expense_date: -1 });
-    
+
     console.log('✅ Database indexes created');
   } catch (error) {
     console.error('⚠️  Index creation warning:', error.message);

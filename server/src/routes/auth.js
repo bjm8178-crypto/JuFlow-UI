@@ -63,7 +63,15 @@ router.post('/login', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user._id, username: user.username, full_name: user.full_name, email: user.email, phone: user.phone, role: role?.name }
+      user: {
+        id: user._id,
+        username: user.username,
+        full_name: user.full_name,
+        email: user.email,
+        phone: user.phone,
+        role: role?.name,
+        role_name: role?.name
+      }
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -77,7 +85,12 @@ router.post('/login', async (req, res) => {
 router.post('/logout', authenticate, async (req, res) => {
   try {
     const db = getDb();
-    await db.collection('auth_sessions').updateOne({ _id: toObjectId(req.user.session_id) }, { $set: { revoked_at: new Date(), ...updateTimestamp() }});
+    if (req.user?.session_id) {
+      await db.collection('auth_sessions').updateOne(
+        { _id: toObjectId(req.user.session_id) },
+        { $set: { revoked_at: new Date(), ...updateTimestamp() } }
+      );
+    }
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);
@@ -95,9 +108,23 @@ router.get('/me', authenticate, async (req, res) => {
     if (!user) return res.status(404).json({ error: 'user_not_found', message: 'User not found' });
     
     const role = await db.collection('roles').findOne({ _id: user.role_id });
+    const userObj = {
+      id: user._id,
+      username: user.username,
+      full_name: user.full_name,
+      email: user.email,
+      phone: user.phone,
+      role_id: user.role_id,
+      role_name: role?.name,
+      role: role?.name,
+      is_active: user.is_active,
+      last_login_at: user.last_login_at
+    };
+
+    // Return both { user: ... } and top-level fields for maximum compatibility with both frontends
     res.json({
-      id: user._id, username: user.username, full_name: user.full_name, email: user.email, phone: user.phone,
-      role_id: user.role_id, role_name: role?.name, is_active: user.is_active, last_login_at: user.last_login_at
+      ...userObj,
+      user: userObj
     });
   } catch (error) {
     console.error('Get user error:', error);
@@ -127,6 +154,13 @@ router.post('/change-password', authenticate, async (req, res) => {
 
     const newHash = await bcrypt.hash(new_password, 10);
     await db.collection('users').updateOne({ _id: user._id }, { $set: { password_hash: newHash, ...updateTimestamp() }});
+
+    // Revoke all existing sessions for this user on password change
+    await db.collection('auth_sessions').updateMany(
+      { user_id: user._id },
+      { $set: { revoked_at: new Date(), ...updateTimestamp() } }
+    );
+
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
     console.error('Change password error:', error);

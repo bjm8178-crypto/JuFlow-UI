@@ -57,6 +57,15 @@ import settingsRoutes from './routes/settings.js';
 import deliveryZonesRoutes from './routes/delivery-zones.js';
 import productsRoutes from './routes/products.js';
 
+// Phase 2 routes (Menu, Customers, Orders)
+import categoriesRoutes from './routes/categories.js';
+import customersRoutes from './routes/customers.js';
+import ordersRoutes from './routes/orders.js';
+
+// Phase 3 routes (Sales, Deliveries)
+import salesRoutes from './routes/sales.js';
+import deliveriesRoutes from './routes/deliveries.js';
+
 // Auth routes
 app.use('/api/auth', authRoutes);
 
@@ -66,41 +75,24 @@ app.use('/api/riders', ridersRoutes);
 
 // Menu
 app.use('/api/products', productsRoutes);
-// app.use('/api/categories', categoriesRoutes);
-// app.use('/api/daily-menu', dailyMenuRoutes);
+app.use('/api/categories', categoriesRoutes);
 
 // Customers
-// app.use('/api/customers', customersRoutes);
+app.use('/api/customers', customersRoutes);
 
 // Orders
-// app.use('/api/orders', ordersRoutes);
+app.use('/api/orders', ordersRoutes);
 
 // Sales
-// app.use('/api/sales', salesRoutes);
-// app.use('/api/cashier/sales', cashierSalesRoutes);
+app.use('/api/sales', salesRoutes);
+app.use('/api/cashier/sales', salesRoutes);
 
 // Deliveries
-// app.use('/api/deliveries', deliveriesRoutes);
-
-// Inventory
-// app.use('/api/inventory-items', inventoryRoutes);
-// app.use('/api/suppliers', suppliersRoutes);
-// app.use('/api/purchases', purchasesRoutes);
-
-// Finance
-// app.use('/api/expenses', expensesRoutes);
-// app.use('/api/closing', closingRoutes);
-
-// Reports
-// app.use('/api/reports', reportsRoutes);
+app.use('/api/deliveries', deliveriesRoutes);
 
 // Settings
 app.use('/api/settings', settingsRoutes);
 app.use('/api/delivery-zones', deliveryZonesRoutes);
-
-// Notifications & Audit
-// app.use('/api/notifications', notificationsRoutes);
-// app.use('/api/audit-logs', auditLogsRoutes);
 
 // ============================================================================
 // ERROR HANDLING
@@ -136,7 +128,7 @@ async function startServer() {
   try {
     // Connect to MongoDB first
     await connect();
-    
+
     app.listen(PORT, '0.0.0.0', () => {
       console.log('\n🚀 JuFlow API Server');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

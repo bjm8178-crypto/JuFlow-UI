@@ -1,4 +1,4 @@
-// Presentation-only interactions. No authentication, API, or stored data.
+// UI presentation helpers and topbar user profile hydration.
 let toastTimer;
 function showDemoNotice(message) {
   const toast = document.getElementById('toast');
@@ -29,6 +29,22 @@ if (menuToggle) {
     if (event.key === 'Escape') {
       document.getElementById('sidebar').classList.remove('open');
       menuToggle.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+// Populate topbar profile from the authenticated user
+if (window.JUFLOW_AUTH_READY) {
+  window.JUFLOW_AUTH_READY.then(user => {
+    if (!user) return;
+    const nameEl = document.querySelector('.profile strong');
+    const roleEl = document.querySelector('.profile small');
+    const avatarEl = document.querySelector('.avatar');
+    if (nameEl) nameEl.textContent = user.full_name || user.username || 'User';
+    if (roleEl) roleEl.textContent = user.role_name || 'Staff';
+    if (avatarEl) {
+      const name = user.full_name || user.username || 'U';
+      avatarEl.textContent = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     }
   });
 }
