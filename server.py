@@ -1,9 +1,11 @@
 """JuFlow local admin prototype + cashier sales receiver. Python stdlib only."""
 import argparse, calendar, hashlib, hmac, json, mimetypes, os, secrets, sqlite3
+import auth
+from contextlib import closing
 from datetime import datetime, timedelta, timezone, date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 ROOT=Path(__file__).resolve().parent
 TZ=timezone(timedelta(hours=8))
 DB=ROOT/'.juflow-sales.sqlite3'
@@ -48,7 +50,7 @@ def clean_sale(d):
 def record(d):
  sale=clean_sale(d);body=json.dumps(sale,sort_keys=True,separators=(',',':'));digest=hashlib.sha256(body.encode()).hexdigest()
  total=sum(i['quantity']*i['unit_price_centavos'] for i in sale['items'])
- with connect() as c:
+ with closing(connect()) as c, c:
   c.execute('BEGIN IMMEDIATE')
   old=c.execute('SELECT digest FROM sales WHERE id=?',(sale['transaction_id'],)).fetchone()
   if old:
@@ -59,7 +61,7 @@ def record(d):
 
 def summary(day,demo=False):
  selected=date.fromisoformat(day);seven=(selected-timedelta(days=6)).isoformat();month=selected.replace(day=1).isoformat();earliest=min(seven,month)
- with connect() as c:rows=c.execute('SELECT * FROM sales WHERE demo=? AND substr(sold_at,1,10)>=? AND substr(sold_at,1,10)<=? ORDER BY sold_at DESC,id',(int(demo),earliest,day)).fetchall()
+ with closing(connect()) as c, c:rows=c.execute('SELECT * FROM sales WHERE demo=? AND substr(sold_at,1,10)>=? AND substr(sold_at,1,10)<=? ORDER BY sold_at DESC,id',(int(demo),earliest,day)).fetchall()
  todays=[r for r in rows if r['sold_at'][:10]==day];products={};hours=[0]*24;feed=[];units=0;payments={'cash':0,'gcash':0}
  for r in todays:
   sale=json.loads(r['payload']);payments[sale['payment_method']]+=r['total'];hours[datetime.fromisoformat(r['sold_at']).hour]+=r['total']
@@ -70,8 +72,17 @@ def summary(day,demo=False):
 
 class Handler(BaseHTTPRequestHandler):
  def json_response(self,code,payload):
-  b=json.dumps(payload).encode();self.send_response(code);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(b)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
+  b=json.dumps(payload).encode();self.send_response(code);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(b)));self.send_header('Cache-Control','no-store');self.end_headers()
+  if getattr(self,'command',None)!='HEAD':self.wfile.write(b)
  def do_GET(self):
+  if auth.handle(self,'GET',self.path):return
+  if auth.gate(self,'GET',self.path):return
+  self.serve_get()
+ def do_HEAD(self):
+  if auth.handle(self,'HEAD',self.path):return
+  if auth.gate(self,'HEAD',self.path):return
+  self.serve_get()
+ def serve_get(self):
   u=urlparse(self.path)
   if u.path=='/api/sales/summary':
    q=parse_qs(u.query)
@@ -79,12 +90,15 @@ class Handler(BaseHTTPRequestHandler):
    except ValueError:self.json_response(400,{'error':'Invalid date: use YYYY-MM-DD'})
    return
   if u.path=='/api/health':self.json_response(200,{'status':'ok','mode':'local-admin-prototype'});return
-  name=u.path.lstrip('/') or 'index.html'
+  name=unquote(u.path).lstrip('/') or 'index.html'
   # Never serve the SQLite database, private token, Python source, or arbitrary paths.
   f=ROOT/name
-  if '/' in name or '\\' in name or name.startswith('.') or f.suffix not in ('.html','.css','.js','.png','.svg','.jpg','.ico') or not f.is_file():self.send_error(404);return
-  b=f.read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(name)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(b)
+  if '/' in name or '\\' in name or ':' in name or name.startswith('.') or f.suffix not in ('.html','.css','.js','.png','.svg','.jpg','.ico') or f.is_symlink() or not f.is_file():self.send_error(404);return
+  b=f.read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(name)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers()
+  if getattr(self,'command',None)!='HEAD':self.wfile.write(b)
  def do_POST(self):
+  if auth.handle(self,'POST',self.path):return
+  if auth.gate(self,'POST',self.path):return
   if urlparse(self.path).path!='/api/cashier/sales':self.json_response(404,{'error':'Not found'});return
   if not hmac.compare_digest(self.headers.get('Authorization',''),'Bearer '+TOKEN):self.json_response(401,{'error':'Cashier API token required'});return
   try:
@@ -101,7 +115,8 @@ if __name__=='__main__':
  tokenfile=ROOT/'.cashier-token'
  if not tokenfile.exists():tokenfile.write_text(secrets.token_urlsafe(32));os.chmod(tokenfile,0o600)
  TOKEN=tokenfile.read_text().strip()
- with connect():pass
+ with closing(connect()) as c, c:pass
+ auth.init_auth()
  print(f'JuFlow admin: http://localhost:{args.port}',flush=True)
  print('Local prototype only. Cashier token is in .cashier-token. Do not expose publicly without admin login and HTTPS.',flush=True)
  ThreadingHTTPServer(('127.0.0.1',args.port),Handler).serve_forever()

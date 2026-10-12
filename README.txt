@@ -4,9 +4,9 @@ START
 1. Extract the ZIP.
 2. Open a terminal inside JuFlow-UI.
 3. Run: python server.py (Windows alternative: py server.py)
-4. Open http://localhost:8000 and Explore the dashboard.
+4. Open http://localhost:8000/signup.html for first-run admin signup, then sign in.
 Python 3.10+; no pip dependencies. Internet is required for map imagery.
-Use server.py instead of python -m http.server to enable sales receiving.
+Use server.py, not python -m http.server: authentication and sales receiving require it.
 
 REMOVED
 Team / Employees / Schedule / Attendance / Payroll, including dashboard team cards.
@@ -64,5 +64,20 @@ Philippine midnight, test-data isolation, invalid sales, and cashier authorizati
 JavaScript syntax and HTML links/structure checked.
 Actual browser rendering, real GPS, Google-key integration and live HTTP server
 execution remain unverified in the restricted build environment.
-This is a local admin prototype. Authentication screens are visual only; do not
-publish this service as a production admin app without real authentication.
+AUTHENTICATION
+First-run signup creates the admin; passwords require at least 8 characters.
+Further signup is disabled by default. Set JUFLOW_ALLOW_SIGNUP=1 before starting
+server.py to allow more accounts. These accounts are admins: enable only when needed.
+Set JUFLOW_HTTPS=1 when serving behind HTTPS to mark session cookies Secure.
+Do not use that setting over plain HTTP; deploy remotely only with HTTPS.
+Authentication uses an HttpOnly, SameSite=Lax cookie and server-side SQLite sessions.
+Sessions last 12 hours; five failed password attempts lock the account for 5 minutes.
+Use Logout to invalidate the session. Browser localStorage is not authentication.
+The local .juflow-auth.sqlite3 contains users/session hashes: keep it private, back it
+up securely, and never commit it. JUFLOW_AUTH_DB can set a different database path.
+Create the first admin before exposing the service to others.
+Run python test_auth.py and python test_backend.py for backend checks.
+The cashier endpoint retains its separate authorization; no admin cookie is required.
+Legacy admin.html/dashboard-mongo.html product/rider APIs are not implemented by the
+Python server. Auth works there; unrelated legacy data features remain unavailable.
+This remains a local admin prototype, not a fully hardened production deployment.

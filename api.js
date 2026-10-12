@@ -1,18 +1,10 @@
-// JuFlow API Integration - Connects frontend to MongoDB backend
+// JuFlow API integration. Authentication uses the Python cookie session.
 const JuAPI = (() => {
-  const API_URL = 'http://localhost:3000/api';
-  let authToken = localStorage.getItem('juflow_auth_token');
-  
-  // Get auth token
-  function getToken() {
-    return authToken;
-  }
-  
-  // Check if user is logged in
-  function isAuthenticated() {
-    return !!authToken;
-  }
-  
+  const API_URL = '/api';
+  // Session cookies are HttpOnly; no bearer token is exposed to JavaScript.
+  function getToken() { return null; }
+  function isAuthenticated() { return !!window.JUFLOW_USER; }
+
   // Make API request
   async function request(endpoint, options = {}) {
     const headers = {
@@ -20,28 +12,20 @@ const JuAPI = (() => {
       ...options.headers
     };
     
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
     
     const config = {
       ...options,
+      credentials: 'same-origin',
       headers
     };
     
     try {
       const response = await fetch(`${API_URL}${endpoint}`, config);
       
-      // Handle 401 - token expired
-      if (response.status === 401) {
-        logout();
-        window.location.href = 'index.html';
-        throw new Error('Session expired. Please login again.');
-      }
-      
+      // Unavailable legacy APIs must not invalidate the cookie session.
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Request failed' }));
-        throw new Error(error.message || `HTTP ${response.status}`);
+        throw new Error(error.error || error.message || `HTTP ${response.status}`);
       }
       
       return await response.json();
@@ -52,35 +36,24 @@ const JuAPI = (() => {
   }
   
   // Authentication
-  async function login(username, password) {
-    const data = await request('/auth/login', {
+  async function login(email, password) {
+    return await request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ email, password })
     });
-    
-    authToken = data.token;
-    localStorage.setItem('juflow_auth_token', authToken);
-    localStorage.setItem('juflow_user', JSON.stringify(data.user));
-    
-    return data;
   }
-  
+
   async function logout() {
-    try {
-      await request('/auth/logout', { method: 'POST' });
-    } catch (e) {
-      // Ignore errors on logout
-    }
-    
-    authToken = null;
-    localStorage.removeItem('juflow_auth_token');
-    localStorage.removeItem('juflow_user');
+    await request('/auth/logout', { method: 'POST' });
+    window.JUFLOW_USER = null;
   }
-  
+
   async function getCurrentUser() {
-    return await request('/auth/me');
+    const data = await request('/auth/me');
+    window.JUFLOW_USER = data.user;
+    return data.user;
   }
-  
+
   async function changePassword(currentPassword, newPassword) {
     return await request('/auth/change-password', {
       method: 'POST',
@@ -198,10 +171,9 @@ const JuAPI = (() => {
     });
   }
   
-  // Helper to get current user from localStorage
+  // User confirmed by the server for this page load
   function getCachedUser() {
-    const user = localStorage.getItem('juflow_user');
-    return user ? JSON.parse(user) : null;
+    return window.JUFLOW_USER || null;
   }
   
   // Helper: format money
@@ -265,15 +237,3 @@ const JuAPI = (() => {
     escape
   };
 })();
-
-// Protect dashboard pages - redirect to login if not authenticated
-if (window.location.pathname.includes('dashboard.html') || 
-    window.location.pathname.includes('orders.html') ||
-    window.location.pathname.includes('delivery-map.html') ||
-    window.location.pathname.includes('customers.html') ||
-    window.location.pathname.includes('sales.html')) {
-  
-  if (!JuAPI.isAuthenticated()) {
-    window.location.href = 'index.html';
-  }
-}

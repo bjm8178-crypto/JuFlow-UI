@@ -1,5 +1,6 @@
 import copy, importlib.util, json, tempfile, threading, unittest, urllib.request, urllib.error
 from pathlib import Path
+from contextlib import closing
 spec=importlib.util.spec_from_file_location('juflow_server',Path(__file__).with_name('server.py'));server=importlib.util.module_from_spec(spec);spec.loader.exec_module(server)
 class SalesTest(unittest.TestCase):
  def setUp(self):
@@ -21,7 +22,7 @@ class SalesTest(unittest.TestCase):
    bad=copy.deepcopy(self.sale);bad['items'][0]['quantity']=value
    with self.assertRaises(ValueError):server.record(bad)
  def test_concurrent_retry(self):
-  with server.connect():pass
+  with closing(server.connect()) as c, c:pass
   from concurrent.futures import ThreadPoolExecutor
   with ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(lambda _:server.record(self.sale),range(8)))
   self.assertEqual(sum(not r['duplicate'] for r in results),1)
@@ -34,7 +35,7 @@ class SalesTest(unittest.TestCase):
   self.assertEqual(request('POST','/api/cashier/sales',self.sale)[0],401)
   self.assertEqual(request('POST','/api/cashier/sales',self.sale,'Bearer test-token')[0],201)
   self.assertEqual(request('POST','/api/cashier/sales',self.sale,'Bearer test-token')[0],200)
-  self.assertEqual(request('GET','/api/sales/summary?date=2026-09-29')[1]['total_centavos'],15000)
+  self.assertEqual(request('GET','/api/sales/summary?date=2026-09-29')[0],401)
   self.assertEqual(request('GET','/server.py')[0],404)
   self.assertEqual(request('GET','/.cashier-token')[0],404)
 if __name__=='__main__':unittest.main()

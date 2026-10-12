@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/auth-guard.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard · JuFlow</title>
@@ -107,8 +108,8 @@
     <script>
         async function loadDashboard() {
             try {
-                const user = await JuAPI.getCurrentUser();
-                document.getElementById('welcomeMessage').textContent = `Welcome, ${user.full_name} (${user.role})`;
+                const user = window.JUFLOW_USER;
+                document.getElementById('welcomeMessage').textContent = `Welcome, ${user.name || user.email} (${user.role})`;
 
                 // Load products
                 const products = await JuAPI.request('/products');
@@ -171,12 +172,11 @@
 
         document.getElementById('logoutBtn').addEventListener('click', async () => {
             if (confirm('Logout?')) {
-                await JuAPI.logout();
-                window.location.href = 'login.html';
+                await juflowLogout();
             }
         });
 
-        loadDashboard();
+        window.JUFLOW_AUTH_READY.then(user => { if (user) loadDashboard(); });
     </script>
 </body>
 </html>

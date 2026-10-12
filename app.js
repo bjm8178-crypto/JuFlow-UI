@@ -10,12 +10,6 @@ function showDemoNotice(message) {
 document.querySelectorAll('[data-demo]').forEach(button => {
   button.addEventListener('click', () => showDemoNotice('This feature is part of the UI preview and is not connected yet.'));
 });
-document.querySelectorAll('[data-demo-form]').forEach(form => {
-  form.addEventListener('submit', event => {
-    event.preventDefault();
-    showDemoNotice('Demo only — no account is created or verified. Use “Explore the dashboard” below.');
-  });
-});
 document.querySelectorAll('[data-password]').forEach(button => {
   button.addEventListener('click', () => {
     const input = document.getElementById(button.dataset.password);

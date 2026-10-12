@@ -13,6 +13,7 @@ credentials.json
 *.pfx
 
 # Local databases and journal files
+.juflow-auth.sqlite3
 *.sqlite
 *.sqlite-*
 *.sqlite3

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/auth-guard.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JuFlow Admin - MongoDB Demo</title>
@@ -36,30 +37,11 @@
     </style>
 </head>
 <body>
-    <!-- Login Screen -->
-    <div id="loginScreen">
-        <div class="login-form">
-            <h1>🍽️ JuFlow Admin</h1>
-            <div id="loginError" class="error" style="display:none;"></div>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" id="username" value="admin" required>
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" id="password" value="admin123" required>
-                </div>
-                <button type="submit" class="btn-primary">Login</button>
-            </form>
-        </div>
-    </div>
-
     <!-- Dashboard Screen -->
     <div id="dashboardScreen" style="display:none;">
         <div class="container">
             <div class="header">
-                <button class="logout-btn" onclick="logout()">Logout</button>
+                <button class="logout-btn" onclick="juflowLogout()">Logout</button>
                 <h1>JuFlow Kitchen Admin</h1>
                 <p id="userInfo">Loading...</p>
             </div>
@@ -96,7 +78,7 @@
                         </div>
                         <div class="stat">
                             <span class="stat-label">API Server</span>
-                            <span class="stat-value">http://localhost:3000</span>
+                            <span class="stat-value">Same-origin Python server</span>
                         </div>
                         <div class="stat">
                             <span class="stat-label">Environment</span>
@@ -109,57 +91,17 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3000/api';
-        let authToken = localStorage.getItem('authToken');
-
-        // Show appropriate screen
-        if (authToken) {
-            loadDashboard();
-        }
-
-        // Login form handler
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            
-            try {
-                const response = await fetch(`${API_URL}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    showError(error.message || 'Login failed');
-                    return;
-                }
-
-                const data = await response.json();
-                authToken = data.token;
-                localStorage.setItem('authToken', authToken);
-                loadDashboard();
-            } catch (err) {
-                showError('Cannot connect to server. Is it running?');
-            }
-        });
-
-        function showError(message) {
-            const errorDiv = document.getElementById('loginError');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-        }
+        const API_URL = '/api';
+        window.JUFLOW_AUTH_READY.then(user => { if (user) loadDashboard(); });
 
         async function loadDashboard() {
-            document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('dashboardScreen').style.display = 'block';
 
             try {
                 // Load user info
-                const userResponse = await apiCall('/auth/me');
+                const userResponse = window.JUFLOW_USER;
                 document.getElementById('userInfo').textContent = 
-                    `Logged in as ${userResponse.full_name} (${userResponse.role_name})`;
+                    `Logged in as ${userResponse.name || userResponse.email} (${userResponse.role})`;
 
                 // Load products
                 const products = await apiCall('/products', 'GET', null, false);
@@ -179,17 +121,15 @@
 
             } catch (err) {
                 console.error('Dashboard load error:', err);
-                if (err.message.includes('401')) {
-                    logout();
-                }
+
             }
         }
 
         async function apiCall(endpoint, method = 'GET', body = null, throwOnError = true) {
             const options = {
                 method,
+                credentials: 'same-origin',
                 headers: {
-                    'Authorization': `Bearer ${authToken}`,
                     'Content-Type': 'application/json'
                 }
             };
@@ -275,12 +215,7 @@
             `).join('');
         }
 
-        function logout() {
-            localStorage.removeItem('authToken');
-            authToken = null;
-            document.getElementById('loginScreen').style.display = 'block';
-            document.getElementById('dashboardScreen').style.display = 'none';
-        }
+
     </script>
 </body>
 </html>
