@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login · JuFlow</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="api.js"></script>
+    <style>
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            display: none;
+        }
+        .error-message.visible {
+            display: block;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .loading-overlay.visible {
+            display: flex;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="auth-page">
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <header class="auth-brand">
+        <a class="brand" href="index.html">
+            <span class="brand-mark">J<span>•</span></span>
+            <span>JuFlow<span class="brand-sub">JU KITCHEN OPERATIONS</span></span>
+        </a>
+    </header>
+
+    <main class="auth-layout">
+        <aside class="auth-story">
+            <span class="eyebrow">KITCHEN OPERATIONS SYSTEM</span>
+            <h2>Good food.<br>Smoother operations.</h2>
+            <p>Manage your deliveries, team, and orders in one place.</p>
+        </aside>
+
+        <section class="auth-content">
+            <div class="form-container">
+                <h1>Welcome back</h1>
+                <p class="text-muted">Sign in to manage Ju Kitchen</p>
+
+                <div id="errorMessage" class="error-message"></div>
+
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input 
+                            type="text" 
+                            id="username" 
+                            name="username"
+                            value="admin"
+                            required 
+                            autofocus
+                            autocomplete="username"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password"
+                            value="admin123"
+                            required
+                            autocomplete="current-password"
+                        >
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block">
+                        Sign in
+                    </button>
+                </form>
+
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px; font-size: 13px;">
+                    <strong>Demo Credentials:</strong><br>
+                    Username: <code>admin</code><br>
+                    Password: <code>admin123</code>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // Check if already logged in
+        if (JuAPI.isAuthenticated()) {
+            window.location.href = 'dashboard.html';
+        }
+
+        const loginForm = document.getElementById('loginForm');
+        const errorMessage = document.getElementById('errorMessage');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            // Clear previous errors
+            errorMessage.classList.remove('visible');
+            errorMessage.textContent = '';
+
+            // Show loading
+            loadingOverlay.classList.add('visible');
+
+            try {
+                const response = await JuAPI.login(username, password);
+                
+                // Success! Redirect to dashboard
+                window.location.href = 'dashboard.html';
+                
+            } catch (error) {
+                // Hide loading
+                loadingOverlay.classList.remove('visible');
+                
+                // Show error
+                errorMessage.textContent = error.message || 'Login failed. Please check your credentials.';
+                errorMessage.classList.add('visible');
+                
+                console.error('Login error:', error);
+            }
+        });
+    </script>
+</body>
+</html>

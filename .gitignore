@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+.cashier-token*
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local databases and journal files
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+
+# Generated output and caches
+dist/
+build/
+.next/
+coverage/
+.nyc_output/
+.cache/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+uploads/*
+!uploads/.gitkeep
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
