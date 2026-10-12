@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JuFlow Mobile Apps - Testing Suite</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      color: #bc5125;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+
+    .test-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .test-section h2 {
+      margin-bottom: 15px;
+      color: #333;
+      font-size: 1.2em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.85em;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-pass { background: #d4edda; color: #155724; }
+    .status-fail { background: #f8d7da; color: #721c24; }
+    .status-pending { background: #fff3cd; color: #856404; }
+    .status-running { background: #d1ecf1; color: #0c5460; }
+
+    .test-item {
+      padding: 12px;
+      margin: 8px 0;
+      border-left: 3px solid #ddd;
+      background: #f8f9fa;
+      border-radius: 4px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .test-item.pass { border-left-color: #28a745; background: #f0f9f4; }
+    .test-item.fail { border-left-color: #dc3545; background: #fff5f5; }
+    .test-item.pending { border-left-color: #ffc107; background: #fffdf0; }
+
+    .test-icon {
+      font-size: 1.2em;
+      margin-top: 2px;
+    }
+
+    .test-details {
+      flex: 1;
+    }
+
+    .test-name {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .test-description {
+      font-size: 0.9em;
+      color: #666;
+    }
+
+    .test-error {
+      margin-top: 8px;
+      padding: 8px;
+      background: #fff;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      color: #c7254e;
+    }
+
+    .button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+
+    .button-primary {
+      background: #bc5125;
+      color: white;
+    }
+
+    .button-primary:hover {
+      background: #a04520;
+    }
+
+    .button-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .button-secondary:hover {
+      background: #5a6268;
+    }
+
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .summary {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .summary-card {
+      flex: 1;
+      min-width: 200px;
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .summary-value {
+      font-size: 2em;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+
+    .summary-label {
+      color: #666;
+      font-size: 0.9em;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: #e9ecef;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #bc5125;
+      transition: width 0.3s;
+    }
+
+    .log {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85em;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 15px;
+    }
+
+    .log-entry {
+      margin: 4px 0;
+      padding: 2px 0;
+    }
+
+    .log-info { color: #4ec9b0; }
+    .log-success { color: #6a9955; }
+    .log-error { color: #f48771; }
+    .log-warn { color: #dcdcaa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 JuFlow Mobile Apps - Testing Suite</h1>
+    <p class="subtitle">Comprehensive validation for Cashier and Rider PWAs</p>
+
+    <!-- Summary Cards -->
+    <div class="summary">
+      <div class="summary-card">
+        <div class="summary-value" id="total-tests">0</div>
+        <div class="summary-label">Total Tests</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-bar" style="width: 0%"></div>
+        </div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-value" style="color: #28a745" id="passed-tests">0</div>
+        <div class="summary-label">Passed</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-value" style="color: #dc3545" id="failed-tests">0</div>
+        <div class="summary-label">Failed</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-value" style="color: #ffc107" id="pending-tests">0</div>
+        <div class="summary-label">Pending</div>
+      </div>
+    </div>
+
+    <!-- Control Buttons -->
+    <div>
+      <button class="button button-primary" onclick="runAllTests()">▶ Run All Tests</button>
+      <button class="button button-secondary" onclick="runCashierTests()">Run Cashier Tests</button>
+      <button class="button button-secondary" onclick="runRiderTests()">Run Rider Tests</button>
+      <button class="button button-secondary" onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <!-- Environment Tests -->
+    <div class="test-section">
+      <h2>🔧 Environment & Prerequisites</h2>
+      <div id="env-tests"></div>
+    </div>
+
+    <!-- PWA Tests -->
+    <div class="test-section">
+      <h2>📱 PWA Capabilities</h2>
+      <div id="pwa-tests"></div>
+    </div>
+
+    <!-- File Existence Tests -->
+    <div class="test-section">
+      <h2>📂 File Existence</h2>
+      <div id="file-tests"></div>
+    </div>
+
+    <!-- Cashier App Tests -->
+    <div class="test-section">
+      <h2>🧮 Cashier App</h2>
+      <div id="cashier-tests"></div>
+    </div>
+
+    <!-- Rider App Tests -->
+    <div class="test-section">
+      <h2>🏍️ Rider App</h2>
+      <div id="rider-tests"></div>
+    </div>
+
+    <!-- Integration Tests -->
+    <div class="test-section">
+      <h2>🔗 Integration & API</h2>
+      <div id="integration-tests"></div>
+    </div>
+
+    <!-- Console Log -->
+    <div class="test-section">
+      <h2>📝 Test Log</h2>
+      <div class="log" id="test-log"></div>
+    </div>
+  </div>
+
+  <script>
+    // Test results storage
+    const testResults = {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      pending: 0,
+      tests: []
+    };
+
+    // Logging
+    function log(message, level = 'info') {
+      const logEl = document.getElementById('test-log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${level}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(message);
+    }
+
+    // Test framework
+    class Test {
+      constructor(name, description, fn) {
+        this.name = name;
+        this.description = description;
+        this.fn = fn;
+        this.status = 'pending';
+        this.error = null;
+      }
+
+      async run() {
+        try {
+          log(`Running: ${this.name}`, 'info');
+          await this.fn();
+          this.status = 'pass';
+          log(`✓ ${this.name}`, 'success');
+        } catch (err) {
+          this.status = 'fail';
+          this.error = err.message;
+          log(`✗ ${this.name}: ${err.message}`, 'error');
+        }
+      }
+    }
+
+    // Test suites
+    const testSuites = {
+      environment: [],
+      pwa: [],
+      files: [],
+      cashier: [],
+      rider: [],
+      integration: []
+    };
+
+    // Helper functions
+    function assert(condition, message) {
+      if (!condition) {
+        throw new Error(message || 'Assertion failed');
+      }
+    }
+
+    async function fileExists(path) {
+      try {
+        const response = await fetch(path, { method: 'HEAD' });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    // Environment tests
+    testSuites.environment.push(
+      new Test(
+        'HTTPS Connection',
+        'App must be served over HTTPS for PWA features',
+        async () => {
+          assert(
+            location.protocol === 'https:' || location.hostname === 'localhost',
+            'Must use HTTPS (or localhost for testing)'
+          );
+        }
+      ),
+      new Test(
+        'Service Worker API',
+        'Browser supports Service Workers',
+        async () => {
+          assert('serviceWorker' in navigator, 'Service Worker not supported');
+        }
+      ),
+      new Test(
+        'IndexedDB API',
+        'Browser supports IndexedDB',
+        async () => {
+          assert('indexedDB' in window, 'IndexedDB not supported');
+        }
+      ),
+      new Test(
+        'Geolocation API',
+        'Browser supports Geolocation',
+        async () => {
+          assert('geolocation' in navigator, 'Geolocation not supported');
+        }
+      ),
+      new Test(
+        'Notification API',
+        'Browser supports Notifications',
+        async () => {
+          assert('Notification' in window, 'Notifications not supported');
+        }
+      )
+    );
+
+    // PWA tests
+    testSuites.pwa.push(
+      new Test(
+        'Viewport Meta Tag',
+        'Page has viewport meta for mobile',
+        async () => {
+          const meta = document.querySelector('meta[name="viewport"]');
+          assert(meta, 'Viewport meta tag not found');
+          assert(
+            meta.content.includes('width=device-width'),
+            'Viewport must include width=device-width'
+          );
+        }
+      ),
+      new Test(
+        'Manifest Link',
+        'Cashier app links to manifest',
+        async () => {
+          const exists = await fileExists('/cashier/manifest.webmanifest');
+          assert(exists, 'Cashier manifest not accessible');
+        }
+      ),
+      new Test(
+        'Service Worker Registration',
+        'Cashier service worker accessible',
+        async () => {
+          const exists = await fileExists('/cashier/sw.js');
+          assert(exists, 'Cashier service worker not accessible');
+        }
+      )
+    );
+
+    // File existence tests
+    const requiredFiles = [
+      // Cashier
+      '/cashier/index.html',
+      '/cashier/app.js',
+      '/cashier/pos.js',
+      '/cashier/orders.js',
+      '/cashier/new-order.js',
+      '/cashier/today.js',
+      '/cashier/me.js',
+      '/cashier/manifest.webmanifest',
+      '/cashier/sw.js',
+      // Rider
+      '/rider/index.html',
+      '/rider/app.js',
+      '/rider/jobs.js',
+      '/rider/history.js',
+      '/rider/me.js',
+      '/rider/manifest.webmanifest',
+      '/rider/sw.js',
+      // Shared
+      '/shared/styles.css',
+      '/shared/utils.js',
+      '/shared/db.js',
+      '/shared/network.js'
+    ];
+
+    requiredFiles.forEach(path => {
+      testSuites.files.push(
+        new Test(
+          `File: ${path}`,
+          `${path} exists and is accessible`,
+          async () => {
+            const exists = await fileExists(path);
+            assert(exists, `File not found: ${path}`);
+          }
+        )
+      );
+    });
+
+    // Cashier app tests
+    testSuites.cashier.push(
+      new Test(
+        'App Shell Loads',
+        'Cashier index.html loads without errors',
+        async () => {
+          const response = await fetch('/cashier/');
+          assert(response.ok, 'Failed to load cashier app');
+          const html = await response.text();
+          assert(html.includes('JuFlow Cashier'), 'App title not found');
+        }
+      ),
+      new Test(
+        'Manifest Valid JSON',
+        'Cashier manifest is valid JSON',
+        async () => {
+          const response = await fetch('/cashier/manifest.webmanifest');
+          assert(response.ok, 'Failed to load manifest');
+          const manifest = await response.json();
+          assert(manifest.name === 'JuFlow Cashier', 'Incorrect app name');
+          assert(manifest.theme_color === '#bc5125', 'Incorrect theme color');
+        }
+      ),
+      new Test(
+        'Service Worker Valid',
+        'Cashier SW loads and is valid JavaScript',
+        async () => {
+          const response = await fetch('/cashier/sw.js');
+          assert(response.ok, 'Failed to load service worker');
+          const sw = await response.text();
+          assert(sw.includes('CACHE_NAME'), 'SW cache name not defined');
+        }
+      )
+    );
+
+    // Rider app tests
+    testSuites.rider.push(
+      new Test(
+        'App Shell Loads',
+        'Rider index.html loads without errors',
+        async () => {
+          const response = await fetch('/rider/');
+          assert(response.ok, 'Failed to load rider app');
+          const html = await response.text();
+          assert(html.includes('JuFlow Rider'), 'App title not found');
+        }
+      ),
+      new Test(
+        'Manifest Valid JSON',
+        'Rider manifest is valid JSON',
+        async () => {
+          const response = await fetch('/rider/manifest.webmanifest');
+          assert(response.ok, 'Failed to load manifest');
+          const manifest = await response.json();
+          assert(manifest.name === 'JuFlow Rider', 'Incorrect app name');
+          assert(manifest.theme_color === '#39735b', 'Incorrect theme color');
+        }
+      ),
+      new Test(
+        'Service Worker Valid',
+        'Rider SW loads and is valid JavaScript',
+        async () => {
+          const response = await fetch('/rider/sw.js');
+          assert(response.ok, 'Failed to load service worker');
+          const sw = await response.text();
+          assert(sw.includes('CACHE_NAME'), 'SW cache name not defined');
+        }
+      )
+    );
+
+    // Integration tests
+    testSuites.integration.push(
+      new Test(
+        'Shared CSS Loads',
+        'Shared styles.css is accessible',
+        async () => {
+          const response = await fetch('/shared/styles.css');
+          assert(response.ok, 'Failed to load shared CSS');
+          const css = await response.text();
+          assert(css.includes('--brand-orange'), 'CSS variables not defined');
+        }
+      ),
+      new Test(
+        'Shared Utils Valid',
+        'Shared utils.js is valid JavaScript',
+        async () => {
+          const response = await fetch('/shared/utils.js');
+          assert(response.ok, 'Failed to load shared utils');
+          const js = await response.text();
+          assert(js.includes('formatPeso'), 'formatPeso function not found');
+        }
+      ),
+      new Test(
+        'Database Module Valid',
+        'Shared db.js is valid JavaScript',
+        async () => {
+          const response = await fetch('/shared/db.js');
+          assert(response.ok, 'Failed to load database module');
+          const js = await response.text();
+          assert(js.includes('JuFlowDB'), 'JuFlowDB not defined');
+        }
+      ),
+      new Test(
+        'Network Module Valid',
+        'Shared network.js is valid JavaScript',
+        async () => {
+          const response = await fetch('/shared/network.js');
+          assert(response.ok, 'Failed to load network module');
+          const js = await response.text();
+          assert(js.includes('JuFlowNetwork'), 'JuFlowNetwork not defined');
+        }
+      )
+    );
+
+    // Render test results
+    function renderTest(test, containerId) {
+      const container = document.getElementById(containerId);
+      const testEl = document.createElement('div');
+      testEl.className = `test-item ${test.status}`;
+      testEl.innerHTML = `
+        <div class="test-icon">
+          ${test.status === 'pass' ? '✓' : test.status === 'fail' ? '✗' : '⏸'}
+        </div>
+        <div class="test-details">
+          <div class="test-name">${test.name}</div>
+          <div class="test-description">${test.description}</div>
+          ${test.error ? `<div class="test-error">${test.error}</div>` : ''}
+        </div>
+      `;
+      container.appendChild(testEl);
+    }
+
+    // Update summary
+    function updateSummary() {
+      document.getElementById('total-tests').textContent = testResults.total;
+      document.getElementById('passed-tests').textContent = testResults.passed;
+      document.getElementById('failed-tests').textContent = testResults.failed;
+      document.getElementById('pending-tests').textContent = testResults.pending;
+      
+      const progress = testResults.total > 0 
+        ? ((testResults.passed + testResults.failed) / testResults.total) * 100 
+        : 0;
+      document.getElementById('progress-bar').style.width = `${progress}%`;
+    }
+
+    // Run test suite
+    async function runSuite(suite, containerId) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+
+      for (const test of suite) {
+        await test.run();
+        renderTest(test, containerId);
+        
+        if (test.status === 'pass') testResults.passed++;
+        else if (test.status === 'fail') testResults.failed++;
+        else testResults.pending++;
+        
+        updateSummary();
+      }
+    }
+
+    // Run all tests
+    async function runAllTests() {
+      clearResults();
+      log('Starting test suite...', 'info');
+      
+      testResults.total = Object.values(testSuites).reduce((sum, suite) => sum + suite.length, 0);
+      updateSummary();
+
+      await runSuite(testSuites.environment, 'env-tests');
+      await runSuite(testSuites.pwa, 'pwa-tests');
+      await runSuite(testSuites.files, 'file-tests');
+      await runSuite(testSuites.cashier, 'cashier-tests');
+      await runSuite(testSuites.rider, 'rider-tests');
+      await runSuite(testSuites.integration, 'integration-tests');
+
+      log('Test suite complete!', 'success');
+      log(`Results: ${testResults.passed} passed, ${testResults.failed} failed`, 'info');
+    }
+
+    // Run specific suites
+    async function runCashierTests() {
+      clearResults();
+      testResults.total = testSuites.cashier.length;
+      updateSummary();
+      await runSuite(testSuites.cashier, 'cashier-tests');
+    }
+
+    async function runRiderTests() {
+      clearResults();
+      testResults.total = testSuites.rider.length;
+      updateSummary();
+      await runSuite(testSuites.rider, 'rider-tests');
+    }
+
+    // Clear results
+    function clearResults() {
+      testResults.total = 0;
+      testResults.passed = 0;
+      testResults.failed = 0;
+      testResults.pending = 0;
+      updateSummary();
+      
+      ['env-tests', 'pwa-tests', 'file-tests', 'cashier-tests', 'rider-tests', 'integration-tests'].forEach(id => {
+        document.getElementById(id).innerHTML = '';
+      });
+      
+      document.getElementById('test-log').innerHTML = '';
+      log('Test results cleared', 'info');
+    }
+
+    // Initialize
+    log('JuFlow Mobile Apps Testing Suite loaded', 'success');
+    log(`Total tests available: ${Object.values(testSuites).reduce((sum, suite) => sum + suite.length, 0)}`, 'info');
+  </script>
+</body>
+</html>

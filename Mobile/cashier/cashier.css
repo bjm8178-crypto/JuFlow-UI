@@ -1,0 +1,33 @@
+.segmented{display:flex;gap:6px;background:#eef0ea;border-radius:12px;padding:4px;margin-bottom:14px}
+.segmented button{flex:1;min-height:42px;border:0;border-radius:9px;background:transparent;font-weight:600;color:#5d665b}
+.segmented button.on{background:#fff;color:#bc5125;box-shadow:0 1px 3px #0002}
+.stage-title{margin:18px 0 8px}.stage-title h2{font-size:15px}
+.order-card{background:#fff;border:1px solid #e6e8e1;border-radius:14px;padding:14px;margin-bottom:12px}
+.order-card.compact{padding:12px}
+.order-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}.order-ago{margin-left:auto}
+.chip-tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;background:#eef0ea}
+.tone-info{background:#e8eef8;color:#244a86}.tone-warn{background:#fdf0dc;color:#8a5a12}.tone-ok{background:#e8f3ea;color:#2f6b43}.tone-muted{background:#eef0ea;color:#667164}.tone-accent{background:#fcf0e7;color:#bc5125}
+.order-cust{margin:6px 0}.order-cust .tel{display:inline-block;margin-left:8px;color:#bc5125;font-weight:600}
+.order-items,.order-notes{margin:6px 0}
+.order-pay{display:flex;justify-content:space-between;gap:10px;margin:8px 0;font-size:13px}
+.order-actions{display:grid;gap:8px;margin-top:10px}
+.link-btn{background:none;border:0;padding:8px;font-weight:600;color:#667164}.link-btn.danger{color:#a52c23}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:8px}
+.summary-card{background:#fff;border:1px solid #e6e8e1;border-radius:14px;padding:14px}
+.summary-card h3{font-size:12px;color:#667164;font-weight:600}.summary-value{font-size:22px;font-weight:700;margin-top:4px}
+.sheet-text{font-size:14px;margin:0 0 12px;color:#4a5348}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.sell-total{font-weight:700;font-size:16px;margin:4px 0 6px}
+.sell input[type=search]{width:100%;margin:0 0 12px}
+.dish-grid{display:grid;gap:10px}
+.dish{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e6e8e1;border-radius:14px;padding:10px}
+.dish.on{border-color:#bc5125}
+.dish-img{width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none}
+.dish-ph{display:grid;place-items:center;background:#fcf0e7;color:#bc5125;font-weight:700;font-size:20px}
+.dish-info{flex:1;min-width:0}.dish-name{font-weight:600}.dish-price{font-size:13px;color:#667164}
+.qty{display:flex;align-items:center;gap:10px}.qty strong{min-width:24px;text-align:center;font-size:18px}
+.qty-btn{width:44px;height:44px;border-radius:12px;border:1px solid #d9dcd3;background:#fff;font-size:22px;font-weight:700}
+.qty-btn.plus{background:#bc5125;border-color:#bc5125;color:#fff}.qty-btn:disabled{opacity:.4}
+.status-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.status-steps button{min-height:44px;border-radius:10px;border:1px solid #d9dcd3;background:#fff;font-weight:600}
+.status-steps button.on{background:#bc5125;border-color:#bc5125;color:#fff}

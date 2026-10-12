@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JuFlow Icon Generator</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      max-width: 1000px;
+      width: 100%;
+      padding: 40px;
+    }
+
+    h1 {
+      color: #2d3748;
+      margin-bottom: 10px;
+      font-size: 2em;
+    }
+
+    .subtitle {
+      color: #718096;
+      margin-bottom: 30px;
+      font-size: 1.1em;
+    }
+
+    .alert {
+      background: #fef3c7;
+      border-left: 4px solid #f59e0b;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+    }
+
+    .alert strong {
+      color: #92400e;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .alert p {
+      color: #78350f;
+      margin: 0;
+      font-size: 0.95em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 30px;
+    }
+
+    .icon-card {
+      background: #f7fafc;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      border: 2px solid #e2e8f0;
+      transition: all 0.3s;
+    }
+
+    .icon-card:hover {
+      border-color: #cbd5e0;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .icon-card h3 {
+      color: #2d3748;
+      margin-bottom: 16px;
+      font-size: 1.1em;
+    }
+
+    canvas {
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      margin-bottom: 16px;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .button {
+      background: #4c51bf;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.95em;
+      width: 100%;
+    }
+
+    .button:hover {
+      background: #434190;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(76, 81, 191, 0.3);
+    }
+
+    .button:active {
+      transform: translateY(0);
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 30px;
+    }
+
+    .button-group .button {
+      flex: 1;
+    }
+
+    .button-success {
+      background: #48bb78;
+    }
+
+    .button-success:hover {
+      background: #38a169;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #e2e8f0;
+      color: #4a5568;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.85em;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .badge-orange { background: #fed7d7; color: #c53030; }
+    .badge-green { background: #c6f6d5; color: #22543d; }
+    .badge-purple { background: #e9d8fd; color: #553c9a; }
+
+    .instructions {
+      background: #edf2f7;
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 30px;
+    }
+
+    .instructions h3 {
+      color: #2d3748;
+      margin-bottom: 12px;
+    }
+
+    .instructions ol {
+      margin-left: 20px;
+      color: #4a5568;
+    }
+
+    .instructions li {
+      margin: 8px 0;
+      padding-left: 8px;
+    }
+
+    .progress {
+      margin-top: 30px;
+      padding: 20px;
+      background: #f0fff4;
+      border-radius: 12px;
+      border: 2px solid #9ae6b4;
+    }
+
+    .progress h3 {
+      color: #22543d;
+      margin-bottom: 12px;
+    }
+
+    .progress-bar {
+      background: #e2e8f0;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+
+    .progress-fill {
+      background: linear-gradient(90deg, #48bb78, #38a169);
+      height: 100%;
+      transition: width 0.5s ease;
+      border-radius: 4px;
+    }
+
+    .progress-text {
+      color: #2f855a;
+      font-weight: 600;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .checklist {
+      list-style: none;
+      margin-left: 0;
+    }
+
+    .checklist li {
+      padding: 8px 0;
+      color: #4a5568;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .checklist li::before {
+      content: '○';
+      color: #cbd5e0;
+      font-weight: bold;
+      font-size: 1.2em;
+    }
+
+    .checklist li.done::before {
+      content: '✓';
+      color: #48bb78;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        padding: 24px;
+      }
+
+      h1 {
+        font-size: 1.5em;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 JuFlow Icon Generator</h1>
+    <p class="subtitle">Generate all 6 required PWA icons in your browser</p>
+
+    <div class="alert">
+      <strong>⚡ Quick Generation</strong>
+      <p>Click "Generate All Icons" below to create all 6 icons, then click individual "Download" buttons to save them with the correct filenames.</p>
+    </div>
+
+    <!-- Icon Preview Grid -->
+    <div class="grid">
+      <!-- Cashier 192 -->
+      <div class="icon-card">
+        <span class="badge badge-orange">Cashier</span>
+        <h3>cashier-192.png</h3>
+        <canvas id="cashier-192" width="192" height="192"></canvas>
+        <button class="button" onclick="downloadIcon('cashier-192')">Download 192×192</button>
+      </div>
+
+      <!-- Cashier 512 -->
+      <div class="icon-card">
+        <span class="badge badge-orange">Cashier</span>
+        <h3>cashier-512.png</h3>
+        <canvas id="cashier-512" width="512" height="512"></canvas>
+        <button class="button" onclick="downloadIcon('cashier-512')">Download 512×512</button>
+      </div>
+
+      <!-- Cashier Maskable -->
+      <div class="icon-card">
+        <span class="badge badge-purple">Cashier Maskable</span>
+        <h3>cashier-maskable-512.png</h3>
+        <canvas id="cashier-maskable" width="512" height="512"></canvas>
+        <button class="button" onclick="downloadIcon('cashier-maskable')">Download Maskable</button>
+      </div>
+
+      <!-- Rider 192 -->
+      <div class="icon-card">
+        <span class="badge badge-green">Rider</span>
+        <h3>rider-192.png</h3>
+        <canvas id="rider-192" width="192" height="192"></canvas>
+        <button class="button" onclick="downloadIcon('rider-192')">Download 192×192</button>
+      </div>
+
+      <!-- Rider 512 -->
+      <div class="icon-card">
+        <span class="badge badge-green">Rider</span>
+        <h3>rider-512.png</h3>
+        <canvas id="rider-512" width="512" height="512"></canvas>
+        <button class="button" onclick="downloadIcon('rider-512')">Download 512×512</button>
+      </div>
+
+      <!-- Rider Maskable -->
+      <div class="icon-card">
+        <span class="badge badge-purple">Rider Maskable</span>
+        <h3>rider-maskable-512.png</h3>
+        <canvas id="rider-maskable" width="512" height="512"></canvas>
+        <button class="button" onclick="downloadIcon('rider-maskable')">Download Maskable</button>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="button-group">
+      <button class="button button-success" onclick="generateAllIcons()">
+        ✨ Generate All Icons
+      </button>
+      <button class="button" onclick="downloadAllIcons()">
+        📦 Download All (ZIP)
+      </button>
+    </div>
+
+    <!-- Progress Tracker -->
+    <div class="progress" id="progress-section" style="display: none;">
+      <h3>📋 Generation Progress</h3>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+      <p class="progress-text" id="progress-text">0 of 6 icons generated</p>
+      <ul class="checklist" id="checklist">
+        <li id="check-1">cashier-192.png</li>
+        <li id="check-2">cashier-512.png</li>
+        <li id="check-3">cashier-maskable-512.png</li>
+        <li id="check-4">rider-192.png</li>
+        <li id="check-5">rider-512.png</li>
+        <li id="check-6">rider-maskable-512.png</li>
+      </ul>
+    </div>
+
+    <!-- Instructions -->
+    <div class="instructions">
+      <h3>📝 Instructions</h3>
+      <ol>
+        <li><strong>Generate:</strong> Click "Generate All Icons" button above</li>
+        <li><strong>Review:</strong> Check that all 6 icons look correct</li>
+        <li><strong>Download:</strong> Click individual "Download" buttons or "Download All"</li>
+        <li><strong>Save:</strong> Save files to <code>Mobile/icons/</code> directory with exact filenames shown</li>
+        <li><strong>Verify:</strong> Check file sizes are reasonable (10-50 KB each)</li>
+        <li><strong>Test:</strong> Run test.html to verify icons are accessible</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    const CASHIER_COLOR = '#bc5125';
+    const RIDER_COLOR = '#39735b';
+    const LOGO_TEXT = 'J•';
+    
+    let generatedCount = 0;
+
+    function drawIcon(canvasId, color, size, isMaskable = false) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, size, size);
+      
+      // Background
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, size, size);
+      
+      // For maskable icons, add padding (80% safe zone = content in center 80%)
+      const scale = isMaskable ? 0.6 : 0.7;
+      const fontSize = size * scale;
+      
+      // Draw logo text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(LOGO_TEXT, size / 2, size / 2);
+      
+      // Update progress
+      generatedCount++;
+      updateProgress();
+      
+      // Mark as done
+      const checkId = canvasId.includes('cashier') 
+        ? (canvasId.includes('192') ? 1 : canvasId.includes('maskable') ? 3 : 2)
+        : (canvasId.includes('192') ? 4 : canvasId.includes('maskable') ? 6 : 5);
+      document.getElementById(`check-${checkId}`).classList.add('done');
+    }
+
+    function updateProgress() {
+      const progressSection = document.getElementById('progress-section');
+      const progressFill = document.getElementById('progress-fill');
+      const progressText = document.getElementById('progress-text');
+      
+      progressSection.style.display = 'block';
+      
+      const percentage = (generatedCount / 6) * 100;
+      progressFill.style.width = `${percentage}%`;
+      progressText.textContent = `${generatedCount} of 6 icons generated`;
+      
+      if (generatedCount === 6) {
+        progressText.textContent = '✓ All icons generated! Click Download buttons to save.';
+      }
+    }
+
+    function generateAllIcons() {
+      generatedCount = 0;
+      
+      // Reset checklist
+      for (let i = 1; i <= 6; i++) {
+        document.getElementById(`check-${i}`).classList.remove('done');
+      }
+      
+      // Generate all icons
+      drawIcon('cashier-192', CASHIER_COLOR, 192, false);
+      drawIcon('cashier-512', CASHIER_COLOR, 512, false);
+      drawIcon('cashier-maskable', CASHIER_COLOR, 512, true);
+      drawIcon('rider-192', RIDER_COLOR, 192, false);
+      drawIcon('rider-512', RIDER_COLOR, 512, false);
+      drawIcon('rider-maskable', RIDER_COLOR, 512, true);
+      
+      console.log('✓ All icons generated');
+    }
+
+    function downloadIcon(canvasId) {
+      const canvas = document.getElementById(canvasId);
+      
+      // Determine filename
+      const filename = canvasId === 'cashier-192' ? 'cashier-192.png'
+        : canvasId === 'cashier-512' ? 'cashier-512.png'
+        : canvasId === 'cashier-maskable' ? 'cashier-maskable-512.png'
+        : canvasId === 'rider-192' ? 'rider-192.png'
+        : canvasId === 'rider-512' ? 'rider-512.png'
+        : 'rider-maskable-512.png';
+      
+      // Convert to blob and download
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        console.log(`✓ Downloaded: ${filename}`);
+      }, 'image/png');
+    }
+
+    async function downloadAllIcons() {
+      if (generatedCount < 6) {
+        alert('Please generate all icons first by clicking "Generate All Icons"');
+        return;
+      }
+      
+      // Note: Browser can't create ZIP files natively
+      // Download each file individually instead
+      alert('Each icon will download separately. Save them to Mobile/icons/ with the exact filenames shown.');
+      
+      const canvasIds = [
+        'cashier-192',
+        'cashier-512',
+        'cashier-maskable',
+        'rider-192',
+        'rider-512',
+        'rider-maskable'
+      ];
+      
+      // Download each with a small delay to prevent browser blocking
+      for (let i = 0; i < canvasIds.length; i++) {
+        setTimeout(() => {
+          downloadIcon(canvasIds[i]);
+        }, i * 500); // 500ms delay between downloads
+      }
+    }
+
+    // Generate icons on page load for preview
+    window.addEventListener('load', () => {
+      console.log('JuFlow Icon Generator loaded');
+      console.log('Click "Generate All Icons" to create all 6 required icons');
+    });
+  </script>
+</body>
+</html>
