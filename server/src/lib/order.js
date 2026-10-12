@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { getDeliveryArea } from './delivery-areas.js';
 
 export function orderError(message, status = 400, code = 'validation_error') {
   return Object.assign(new Error(message), { status, code });
@@ -49,8 +50,16 @@ export function validateOrder(raw) {
   const payment_method = raw.payment_method;
   if (!['cash', 'exact', 'gcash'].includes(payment_method)) throw orderError('payment_method must be cash, exact or gcash');
   const payment_reference = payment_method === 'gcash' ? text(raw.payment_reference, 'payment_reference', 100) : null;
+  const fee_centavos = integer(raw.fee_centavos ?? 0, 'fee_centavos');
+  const delivery_area = raw.delivery_area === undefined ? null : text(raw.delivery_area, 'delivery_area', 30);
+  if (delivery_area) {
+    const area = getDeliveryArea(delivery_area);
+    if (!area) throw orderError('Choose Within Saog or Outside Saog for delivery');
+    if (fee_centavos !== area.fee_centavos) throw orderError('Delivery fee does not match the selected area');
+  }
   const input = {
-    customer_id, items, fee_centavos: integer(raw.fee_centavos ?? 0, 'fee_centavos'),
+    customer_id, items, fee_centavos,
+    ...(delivery_area ? { delivery_area } : {}),
     payment_method, payment_reference,
     cash_tendered_centavos: payment_method === 'cash' ? integer(raw.cash_tendered_centavos, 'cash_tendered_centavos', 0, Number.MAX_SAFE_INTEGER) : null,
     notes: text(raw.notes, 'notes', 500, true), idempotency_key

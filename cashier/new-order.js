@@ -1,5 +1,5 @@
 /* JuFlow Cashier — New order
- * Phone / Messenger delivery orders: pick a customer, add dishes (priced by the server), choose zone + payment.
+ * Phone / Messenger delivery orders: pick a customer, add dishes, choose a Saog delivery area + payment.
  * Needs a connection. Retrying an unchanged form reuses one idempotency key, so an order can never be created twice.
  */
 (function () {
@@ -10,28 +10,25 @@
   const { h } = ui;
   const { peso, toCentavos, uuid } = C.fmt;
 
-  const data = { menu: [], zones: [], customers: [] };
-  const blank = () => ({ customer: null, qty: {}, zoneId: '', customFee: '', payMode: 'exact', tender: '', ref: '', notes: '', key: uuid(), busy: false, done: null, query: '' });
+  const DELIVERY_AREAS = Object.freeze([
+    { _id: 'within_saog', name: 'Within Saog', fee_centavos: 2000 },
+    { _id: 'outside_saog', name: 'Outside Saog', fee_centavos: 5000 }
+  ]);
+  const data = { menu: [], customers: [] };
+  const blank = () => ({ customer: null, qty: {}, zoneId: 'within_saog', payMode: 'exact', tender: '', ref: '', notes: '', key: uuid(), busy: false, done: null, query: '' });
   let draft = blank();
   const dirty = () => { draft.key = uuid(); };
 
   const lines = () => data.menu.filter((d) => draft.qty[d._id] > 0).map((d) => ({ dish: d, qty: draft.qty[d._id] }));
   const subtotal = () => lines().reduce((s, l) => s + l.qty * l.dish.price_centavos, 0);
-  const zone = () => data.zones.find((z) => z._id === draft.zoneId) || null;
-  const fee = () => {
-    if (draft.zoneId === 'custom') {
-      const c = draft.customFee.trim() === '' ? 0 : toCentavos(draft.customFee);
-      return Number.isFinite(c) && c >= 0 ? c : NaN;
-    }
-    const z = zone();
-    return z ? z.fee_centavos : 0;
-  };
+  const zone = () => DELIVERY_AREAS.find((area) => area._id === draft.zoneId) || null;
+  const fee = () => zone()?.fee_centavos ?? NaN;
   const total = () => subtotal() + (Number.isFinite(fee()) ? fee() : 0);
 
   function problem() {
     if (!draft.customer) return 'Choose a customer.';
     if (!lines().length) return 'Add at least one dish.';
-    if (!Number.isFinite(fee())) return 'Enter a valid delivery fee.';
+    if (!zone()) return 'Choose Within Saog or Outside Saog.';
     if (draft.payMode === 'change') {
       const c = toCentavos(draft.tender);
       if (!Number.isFinite(c) || c < total()) return 'Enter the amount the customer will pay (at least the total).';
@@ -43,15 +40,13 @@
   const explain = (err) => (err.network ? 'No connection. Try again in a moment.' : err.message || 'Something went wrong.');
 
   async function loadAll() {
-    const [menu, zones, customers] = await Promise.all([
+    const [menu, customers] = await Promise.all([
       api.get('/menu/today'),
-      api.get('/delivery-zones'),
       api.get('/customers?limit=8')
     ]);
     data.menu = (menu.dishes || []).filter((d) => d && d._id);
-    data.zones = (Array.isArray(zones) ? zones : []).filter((z) => z.is_active !== false);
     data.customers = Array.isArray(customers) ? customers : [];
-    if (draft.zoneId !== 'custom' && !zone()) draft.zoneId = data.zones.length ? data.zones[0]._id : 'custom';
+    if (!zone()) draft.zoneId = 'within_saog';
     for (const id of Object.keys(draft.qty)) if (!data.menu.some((d) => d._id === id)) delete draft.qty[id];
   }
 
@@ -193,20 +188,13 @@
     /* delivery fee */
     function paintFee() {
       const select = h('select', {
-        'aria-label': 'Delivery zone',
+        'aria-label': 'Delivery area',
         onchange: (e) => { draft.zoneId = e.target.value; dirty(); paintFee(); paintSummary(); }
       },
-      ...data.zones.map((z) => h('option', { value: z._id, selected: z._id === draft.zoneId, text: z.name + ' · ' + peso(z.fee_centavos) })),
-      h('option', { value: 'custom', selected: draft.zoneId === 'custom', text: 'Custom amount' }));
-      const z = zone();
+      ...DELIVERY_AREAS.map((area) => h('option', { value: area._id, selected: area._id === draft.zoneId, text: area.name + ' · ' + peso(area.fee_centavos) })));
       feeBox.replaceChildren(
-        h('h3', { text: 'Delivery fee' }),
-        select,
-        draft.zoneId === 'custom' && h('input', {
-          type: 'number', inputmode: 'decimal', step: '0.01', min: '0', placeholder: 'Delivery fee (₱)', 'aria-label': 'Delivery fee in pesos', value: draft.customFee,
-          oninput: (e) => { draft.customFee = e.target.value; dirty(); paintSummary(); }
-        }),
-        z && z.estimated_minutes && h('p', { class: 'muted small', text: 'Usually about ' + z.estimated_minutes + ' minutes.' }));
+        h('h3', { text: 'Delivery area and fee' }),
+        select);
     }
 
     /* payment */
@@ -281,6 +269,7 @@
       customer_id: draft.customer._id,
       items: lines().map((l) => ({ product_id: l.dish._id, quantity: l.qty })),
       fee_centavos: fee(),
+      delivery_area: draft.zoneId,
       total_centavos: total(),
       payment_method: draft.payMode === 'gcash' ? 'gcash' : draft.payMode === 'change' ? 'cash' : 'exact',
       idempotency_key: draft.key

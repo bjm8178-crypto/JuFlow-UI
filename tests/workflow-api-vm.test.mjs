@@ -17,8 +17,8 @@ function fixture(page = 'customers', request = async endpoint => endpoint === '/
   };
   const pageIds = page === 'customers' ? ['customer-list', 'customer-search', 'customer-profile', 'customer-form', 'customer-dialog', 'order-form', 'order-dialog', 'new-customer', 'add-item'] : ['order-list', 'order-filter'];
   pageIds.forEach(node);
-  ['workflow-status', 'refresh-records', 'item-rows', 'payment-method', 'delivery-fee', 'cash-tendered', 'payment-reference', 'order-notes', 'address-confirm'].forEach(node);
-  node('payment-method').value = 'cash'; node('delivery-fee').value = '10'; node('cash-tendered').value = '400'; node('order-filter').value = 'all';
+  ['workflow-status', 'refresh-records', 'item-rows', 'payment-method', 'delivery-area', 'cash-tendered', 'payment-reference', 'order-notes', 'address-confirm'].forEach(node);
+  node('payment-method').value = 'cash'; node('delivery-area').value = 'within_saog'; node('cash-tendered').value = '400'; node('order-filter').value = 'all';
   const calls = [], mapCalls = [];
   let resolveAuth;
   const auth = new Promise(resolve => { resolveAuth = resolve; });
@@ -83,6 +83,8 @@ test('failed order submission keeps UUID, rejects changed retry and never claims
   app.node('order-notes').value = ''; await app.submit('order-form');
   const posts = app.calls.filter(call => call.endpoint === '/orders');
   assert.equal(posts.length, 2); assert.deepEqual(posts[0].body, posts[1].body);
+  assert.equal(posts[0].body.delivery_area, 'within_saog');
+  assert.equal(posts[0].body.fee_centavos, 2000);
   assert.equal(posts[0].body.items[0].price_centavos, 15000);
   assert.equal(posts[0].body.customer_id, customer._id);
   assert.equal(posts[0].body.total_centavos, undefined);
