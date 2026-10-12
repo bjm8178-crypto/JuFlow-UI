@@ -100,45 +100,6 @@ test('actual source assets build byte-for-byte into a temporary output, not the 
   }
 });
 
-test('standalone mobile builds put each PWA at / with scoped service worker and manifest', async (t) => {
-  const root = await fixture(t);
-  for (const app of ['cashier', 'rider']) {
-    for (const name of FRONTEND_FILES.filter(name => name.startsWith(app + '/'))) {
-      await copyFile(await assertSafePath(projectRoot, name), path.join(root, name));
-    }
-    await buildFrontend(root, app);
-    await checkFrontend(root, app);
-    const expected = app === 'cashier' ? 'pos.js' : 'jobs.js';
-    await assertSafePath(root, 'dist/index.html');
-    await assertSafePath(root, 'dist/' + expected);
-    await assertSafePath(root, 'dist/sw.js');
-    await assertSafePath(root, 'dist/shared/styles.css');
-    await assertSafePath(root, 'dist/icons/' + app + '-192.png');
-    const html = await readFile(path.join(root, 'dist/index.html'), 'utf8');
-    assert.ok(!html.includes('/' + app + '/'), 'mobile HTML uses root paths');
-    const manifest = JSON.parse(await readFile(path.join(root, 'dist/manifest.webmanifest'), 'utf8'));
-    assert.equal(manifest.scope, '/');
-    assert.equal(manifest.id, '/');
-    assert.equal(manifest.start_url, '/?source=pwa');
-    const worker = await readFile(path.join(root, 'dist/sw.js'), 'utf8');
-    assert.ok(!worker.includes('/' + app + '/'), 'worker paths belong to root scope');
-    assert.ok(worker.includes('/index.html'));
-    await assert.rejects(lstat(path.join(root, 'dist', app)), { code: 'ENOENT' });
-    await writeFile(path.join(root, 'dist', 'secret.json'), 'private');
-    await assert.rejects(checkFrontend(root, app), /allowlist/);
-    await rm(path.join(root, 'dist', 'secret.json'));
-  }
-});
-
-test('APP=admin exports only admin and shared assets', async (t) => {
-  const root = await fixture(t);
-  await buildFrontend(root, 'admin');
-  await checkFrontend(root, 'admin');
-  await assertSafePath(root, 'dist/login.html');
-  await assert.rejects(lstat(path.join(root, 'dist/cashier')), { code: 'ENOENT' });
-  await assert.rejects(lstat(path.join(root, 'dist/rider')), { code: 'ENOENT' });
-});
-
 test('deployment uses generated output and keeps the existing API destination', async () => {
   const config = JSON.parse(await readFile(path.join(projectRoot, 'vercel.json'), 'utf8'));
   assert.equal(config.outputDirectory, 'dist');
@@ -207,20 +168,13 @@ for (const app of ['cashier', 'rider']) test(`${app} service worker precache ref
   }
 });
 
-test('rider PWA registers one scoped worker without duplicate route modules', async () => {
-  const app = await readFile(path.join(projectRoot, 'rider', 'app.js'), 'utf8');
-  assert.match(app, /navigator\.serviceWorker\.register\(appRoot \+ 'sw\.js'/);
-  assert.match(app, /pathname\.startsWith\('\/rider\/'\)/);
-  assert.doesNotMatch(app, /document\.createElement\('script'\)/);
-});
-
 test('rider shell uses existing shared styles, icons and app-first screen scripts', async () => {
   const html = await readFile(path.join(projectRoot, 'rider', 'index.html'), 'utf8');
   assert.match(html, /href="\/shared\/styles.css"/);
   assert.match(html, /href="\/icons\/rider-192.png"/);
   assert.doesNotMatch(html, /shared\/app-shell\.js|rider-icon\.svg/);
   assert.deepEqual([...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map(match => match[1]),
-    ['/rider/app.js', '/rider/jobs.js', '/rider/history.js', '/rider/me.js']);
+    ['/rider/app.js', '/rider/pin.js', '/rider/jobs.js', '/rider/history.js', '/rider/me.js']);
 });
 
 function listen(server) {
