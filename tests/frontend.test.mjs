@@ -317,3 +317,19 @@ test('local server denies allowlisted leaf and parent symlinks and arbitrary nes
   }
   assert.equal((await request(frontend, '/cashier/index.html')).status, 200);
 });
+
+test('JuKi branding appears in all standalone app entrypoints without changing technical identifiers', async () => {
+  for (const [file, title] of [
+    ['login.html', 'JuKi'],
+    ['cashier/index.html', 'JuKi Cashier'],
+    ['rider/index.html', 'JuKi Rider']
+  ]) {
+    const html = await readFile(path.join(projectRoot, file), 'utf8');
+    assert.ok(html.includes(title), file + ' contains the JuKi title');
+    assert.ok(!html.includes('JuFlow'), file + ' has no old visible branding');
+  }
+  for (const app of ['cashier', 'rider']) {
+    const manifest = JSON.parse(await readFile(path.join(projectRoot, app, 'manifest.webmanifest'), 'utf8'));
+    assert.ok(manifest.name.startsWith('JuKi '), app + ' manifest has JuKi app name');
+  }
+});
