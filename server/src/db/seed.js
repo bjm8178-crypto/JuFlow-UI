@@ -131,14 +131,11 @@ async function seed() {
     ]);
     console.log(`   ✅ Created ${products.insertedCount} products`);
 
-    // 5. Seed Delivery Zones (Marilao, Bulacan service area)
-    console.log('\n📍 Creating delivery zones (Marilao, Bulacan)...');
+    // 5. Seed the two supported delivery areas for fresh databases only.
+    console.log('\n📍 Creating Saog delivery areas...');
     const zones = await db.collection('delivery_zones').insertMany([
-      { name: 'Marilao - Zone 1 (Saog & Poblacion)', fee_centavos: 3500, min_order_centavos: 0, estimated_minutes: 15, sort_order: 1, is_active: true, ...timestamps() },
-      { name: 'Marilao - Zone 2 (Lias & Ibayo)', fee_centavos: 4500, min_order_centavos: 0, estimated_minutes: 20, sort_order: 2, is_active: true, ...timestamps() },
-      { name: 'Marilao - Zone 3 (Sta. Rosa & Abangan)', fee_centavos: 5500, min_order_centavos: 0, estimated_minutes: 25, sort_order: 3, is_active: true, ...timestamps() },
-      { name: 'Meycauayan City (Border area)', fee_centavos: 7000, min_order_centavos: 25000, estimated_minutes: 35, sort_order: 4, is_active: true, ...timestamps() },
-      { name: 'Bocaue (Border area)', fee_centavos: 8000, min_order_centavos: 30000, estimated_minutes: 40, sort_order: 5, is_active: true, ...timestamps() }
+      { name: 'Within Saog', fee_centavos: 2000, min_order_centavos: 0, sort_order: 1, is_active: true, ...timestamps() },
+      { name: 'Outside Saog', fee_centavos: 5000, min_order_centavos: 0, sort_order: 2, is_active: true, ...timestamps() }
     ]);
     console.log(`   ✅ Created ${zones.insertedCount} delivery zones`);
 

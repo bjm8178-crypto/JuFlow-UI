@@ -93,6 +93,18 @@ async function intake(f, input = body()) {
 }
 
 describe('strict authoritative order intake', () => {
+  it('requires the matching fixed delivery fee when a Saog area is selected', () => {
+    assert.equal(validateOrder({ ...body(), delivery_area: 'within_saog', fee_centavos: 2000 }).delivery_area, 'within_saog');
+    assert.equal(validateOrder({ ...body(), delivery_area: 'outside_saog', fee_centavos: 5000 }).fee_centavos, 5000);
+    for (const change of [
+      { delivery_area: 'within_saog', fee_centavos: 5000 },
+      { delivery_area: 'outside_saog', fee_centavos: 2000 },
+      { delivery_area: 'Iligan Zone 1', fee_centavos: 2000 },
+      { delivery_area: '', fee_centavos: 2000 }
+    ]) {
+      assert.throws(() => validateOrder({ ...body(), ...change }), (error) => error.status === 400);
+    }
+  });
   it('requires customer ObjectId, nontruncated stable key and strict numeric fields', () => {
     for (const change of [ { customer_id: 'bad' }, { customer_id: null, customer: { name: 'x' } },
       { idempotency_key: '' }, { idempotency_key: 'x'.repeat(121) }, { fee_centavos: '50' }, { fee_centavos: true },

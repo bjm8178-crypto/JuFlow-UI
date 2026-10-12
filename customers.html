@@ -341,16 +341,11 @@
             </button>
             <div class="field-row">
               <div>
-                <label for="delivery-fee">Delivery fee (₱)</label
-                ><input
-                  id="delivery-fee"
-                  type="number"
-                  min="0"
-                  max="100000"
-                  step=".01"
-                  value="0"
-                  required
-                />
+                <label for="delivery-area">Delivery area and fee</label
+                ><select id="delivery-area" required>
+                  <option value="within_saog">Within Saog — ₱20</option>
+                  <option value="outside_saog">Outside Saog — ₱50</option>
+                </select>
               </div>
               <div>
                 <label for="payment-method">Payment</label

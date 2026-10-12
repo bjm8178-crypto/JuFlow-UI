@@ -6,6 +6,7 @@ import settings from '../src/routes/settings.js';
 import zones from '../src/routes/delivery-zones.js';
 import { validateCustomer, validateZone, validId, listOptions } from '../src/lib/customer.js';
 import { validateSetting } from '../src/lib/settings.js';
+import { DELIVERY_AREAS, getDeliveryArea } from '../src/lib/delivery-areas.js';
 
 const customer = { name: ' Jane ', phone: ' 0917 ', address: ' Main Street ' };
 const bad = fn => assert.throws(fn, error => error.status === 400);
@@ -27,6 +28,16 @@ test('customer coordinates require finite complete pairs and media is reserved',
   assert.deepEqual(validateCustomer({ lat: -90, lng: 180 }, true), { lat: -90, lng: 180 });
   for (const photo of ['https://example.com/photo.jpg', 'data:image/png;base64,abc', '/uploads/a.png', {}, 123]) bad(() => validateCustomer({ landmark_photo: photo }, true));
   assert.equal(validateCustomer({ landmark_photo: null }, true).landmark_photo, null);
+});
+
+test('Saog delivery areas are exactly Within Saog at ₱20 and Outside Saog at ₱50', () => {
+  assert.deepEqual(DELIVERY_AREAS.map(({ _id, name, fee_centavos }) => ({ _id, name, fee_centavos })), [
+    { _id: 'within_saog', name: 'Within Saog', fee_centavos: 2000 },
+    { _id: 'outside_saog', name: 'Outside Saog', fee_centavos: 5000 }
+  ]);
+  assert.equal(getDeliveryArea('within_saog').fee_centavos, 2000);
+  assert.equal(getDeliveryArea('outside_saog').fee_centavos, 5000);
+  assert.equal(getDeliveryArea('Iligan Zone 1'), null);
 });
 
 test('zone creates and updates validate the same fields and preserve zero', () => {

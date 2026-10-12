@@ -79,10 +79,11 @@
   }
   function orderValues() {
     const items = [...document.querySelectorAll('.item-row')].map(row => { const inputs = row.querySelectorAll('input'); return { name: inputs[0].value.trim(), quantity: Number(inputs[1].value), price_centavos: Math.round(Number(inputs[2].value) * 100) }; });
-    const fee = Math.round(Number($('#delivery-fee').value) * 100);
+    const delivery_area = $('#delivery-area').value;
+    const fee = delivery_area === 'within_saog' ? 2000 : delivery_area === 'outside_saog' ? 5000 : NaN;
     const total = items.reduce((sum, item) => sum + item.quantity * item.price_centavos, fee);
     const method = $('#payment-method').value;
-    return { items, fee_centavos: fee, total, payment_method: method, cash_tendered_centavos: method === 'cash' ? Math.round(Number($('#cash-tendered').value) * 100) : method === 'exact' ? total : null, payment_reference: method === 'gcash' ? $('#payment-reference').value.trim() : null };
+    return { items, delivery_area, fee_centavos: fee, total, payment_method: method, cash_tendered_centavos: method === 'cash' ? Math.round(Number($('#cash-tendered').value) * 100) : method === 'exact' ? total : null, payment_reference: method === 'gcash' ? $('#payment-reference').value.trim() : null };
   }
   function totals() {
     const order = orderValues();

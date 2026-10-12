@@ -2,16 +2,18 @@ import express from 'express';
 import { getDb, toObjectId, timestamps, updateTimestamp } from '../db/mongodb.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { validateZone, validId, listOptions } from '../lib/customer.js';
+import { DELIVERY_AREAS, getDeliveryArea } from '../lib/delivery-areas.js';
 
 const router = express.Router();
 
 router.get('/', authenticate, async (req, res) => {
   try {
     const { limit, skip, search } = listOptions(req.query);
-    const db = getDb();
-    const query = search ? { name: { $regex: search, $options: 'i' } } : {};
-    const zones = await db.collection('delivery_zones').find(query).sort({ sort_order: 1 }).skip(skip).limit(limit).toArray();
-    res.json(zones);
+    // Public order-entry choices are fixed; never expose legacy database zones.
+    const choices = search
+      ? DELIVERY_AREAS.filter((area) => new RegExp(search, 'i').test(area.name))
+      : DELIVERY_AREAS;
+    res.json(choices.slice(skip, skip + limit));
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ error: error.code, message: error.message });
     res.status(500).json({ error: 'fetch_failed', message: 'Failed to fetch delivery zones' });
@@ -20,6 +22,9 @@ router.get('/', authenticate, async (req, res) => {
 
 router.get('/:id', authenticate, async (req, res) => {
   try {
+    const fixedArea = getDeliveryArea(req.params.id);
+    if (fixedArea) return res.json(fixedArea);
+    // Preserve existing ID lookups for clients with historical references.
     validId(req.params.id);
     const db = getDb();
     const zone = await db.collection('delivery_zones').findOne({ _id: toObjectId(req.params.id) });

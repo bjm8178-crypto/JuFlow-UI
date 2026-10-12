@@ -61,7 +61,7 @@ export async function createOrder({ db, transaction, body, actor }) {
           _id: new ObjectId(), order_number: `JU-${seq}`, order_seq: seq,
           customer_id: customer._id,
           customer: Object.fromEntries(['name', 'phone', 'address', 'landmark', 'lat', 'lng', 'landmark_photo'].map(key => [key, customer[key] ?? null])),
-          ...amounts, fee_centavos: input.fee_centavos, payment_method: input.payment_method,
+          ...amounts, fee_centavos: input.fee_centavos, delivery_area: input.delivery_area ?? null, payment_method: input.payment_method,
           payment_reference: input.payment_reference, payment_status: 'pending', payment_verified: false, cash_collected: false,
           preparation_status: 'preparing', delivery_status: 'pending', status: 'preparing',
           rider_id: rider?._id ?? null, rider: rider?.full_name ?? null, notes: input.notes, version: 0,

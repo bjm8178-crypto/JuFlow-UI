@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, readdir, rm } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readdir, rm, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +24,31 @@ export const FRONTEND_FILES = Object.freeze([
 export const FRONTEND_DIRS = Object.freeze(['cashier', 'rider', 'shared', 'icons', '.well-known']);
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * APP=admin|cashier|rider builds a standalone deploy for one Vercel project.
+ * Default 'all' retains the legacy combined site's public paths.
+ * Source paths remain unchanged so both forms can build from the same commit.
+ */
+export const APP_FILES = Object.freeze({
+  admin: FRONTEND_FILES.filter(name => !name.startsWith('cashier/') && !name.startsWith('rider/')),
+  cashier: FRONTEND_FILES.filter(name => name.startsWith('cashier/') || name.startsWith('shared/') ||
+    name.startsWith('icons/cashier-') || name === '.well-known/assetlinks.json'),
+  rider: FRONTEND_FILES.filter(name => name.startsWith('rider/') || name.startsWith('shared/') ||
+    name.startsWith('icons/rider-') || name === '.well-known/assetlinks.json')
+});
+
+export function outputPlan(app = 'all') {
+  if (app !== 'all' && !Object.hasOwn(APP_FILES, app)) throw new Error('APP must be admin, cashier, rider, or all');
+  const files = app === 'all' ? FRONTEND_FILES : APP_FILES[app];
+  const mapping = files.map(source => ({
+    source,
+    output: app !== 'all' && source.startsWith(app + '/') ? source.slice(app.length + 1) : source
+  }));
+  if (new Set(mapping.map(entry => entry.output)).size !== mapping.length) throw new Error('Duplicate frontend output');
+  return mapping;
+}
+
 
 // Check every path component, not just the leaf: a linked app directory is unsafe too.
 export async function assertSafePath(root, filename, directory = false) {
@@ -51,10 +76,11 @@ export async function assertSafePath(root, filename, directory = false) {
   return current;
 }
 
-export async function buildFrontend(root = projectRoot) {
+export async function buildFrontend(root = projectRoot, app = process.env.APP || 'all') {
+  const mapping = outputPlan(app);
   // Validate all inputs before cleaning the generated directory. No globs or repo copy.
-  for (const filename of FRONTEND_FILES) {
-    await assertSafePath(root, filename);
+  for (const { source } of mapping) {
+    await assertSafePath(root, source);
   }
   try {
     await assertSafePath(root, 'dist', true);
@@ -66,19 +92,28 @@ export async function buildFrontend(root = projectRoot) {
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
 
-  for (const filename of FRONTEND_FILES) {
-    const input = await assertSafePath(root, filename);
-    await mkdir(path.dirname(path.join(output, filename)), { recursive: true });
-    await copyFile(input, path.join(output, filename));
+  for (const { source, output: relative } of mapping) {
+    const input = await assertSafePath(root, source);
+    const destination = path.join(output, relative);
+    await mkdir(path.dirname(destination), { recursive: true });
+    // Only transform mobile app text assets; binary icons and shared code are copied unchanged.
+    // Absolute app paths become root paths on each app's *own* origin.
+    if (app !== 'all' && source.startsWith(app + '/') && /\.(?:html|js|css|webmanifest)$/.test(source)) {
+      const content = await readFile(input, 'utf8');
+      await writeFile(destination, content.replaceAll('/' + app + '/', '/'));
+    } else {
+      await copyFile(input, destination);
+    }
   }
-  await checkFrontend(root);
+  await checkFrontend(root, app);
   return output;
 }
 
-export async function checkFrontend(root = projectRoot) {
+export async function checkFrontend(root = projectRoot, app = process.env.APP || 'all') {
   await assertSafePath(root, 'dist', true);
-  const allowed = new Set(FRONTEND_FILES);
-  const directories = new Set(FRONTEND_FILES.flatMap((filename) => {
+  const selectedFiles = outputPlan(app).map(({ output }) => output);
+  const allowed = new Set(selectedFiles);
+  const directories = new Set(selectedFiles.flatMap((filename) => {
     const parts = filename.split('/');
     return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
   }));
