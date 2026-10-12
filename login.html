@@ -76,14 +76,14 @@
 
                 <form id="loginForm">
                     <div class="form-group">
-                        <label for="username">Email address</label>
+                        <label for="username">Username or email</label>
                         <input
-                            type="email"
+                            type="text"
                             id="username"
-                            name="email"
+                            name="username"
                             required
                             autofocus
-                            autocomplete="username"
+                            autocomplete="username" autocapitalize="none" spellcheck="false"
                         >
                     </div>
 
@@ -103,14 +103,14 @@
                     </button>
                 </form>
 
-                <p>First time here? <a href="signup.html">Create an account</a></p>
+                <p class="form-note">Accounts are created by your administrator.</p>
             </div>
         </section>
     </main>
 
     <script>
         function safeNext(value) {
-            if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\\\\u0000-\\u0020\\u007f]/.test(value)) return '/index.html';
+            if (!value || !value.startsWith('/') || value.startsWith('//') || /[\\\u0000-\u0020\u007f]/.test(value)) return '/index.html';
             try {
                 const target = new URL(value, location.origin);
                 return target.origin === location.origin ? target.pathname + target.search + target.hash : '/index.html';
@@ -130,13 +130,13 @@
                 const r = await fetch('/api/auth/login', {
                     method: 'POST', credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: document.getElementById('username').value.trim(), password: document.getElementById('password').value })
+                    body: JSON.stringify((v => ({ username: v, email: v, password: document.getElementById('password').value }))(document.getElementById('username').value.trim()))
                 });
                 if (r.ok) {
                     location.replace(safeNext(new URLSearchParams(location.search).get('next')));
                 } else {
-                    const data = await r.json();
-                    errorMessage.textContent = data.error === 'locked' ? 'Too many attempts. Try again in 5 minutes.' : 'Invalid email or password.';
+                    const data = await r.json().catch(() => ({}));
+                    errorMessage.textContent = (['locked', 'account_locked', 'too_many_requests'].includes(data.error) || r.status === 429) ? 'Too many attempts. Please try again later.' : 'Invalid username/email or password.';
                     errorMessage.classList.add('visible');
                 }
             } catch (_) {

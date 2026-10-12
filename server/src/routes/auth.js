@@ -3,6 +3,10 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { getDb, toObjectId, timestamps, updateTimestamp } from '../db/mongodb.js';
 import { authenticate } from '../middleware/auth.js';
+import { sessionCookie, clearSessionCookie } from '../middleware/cookies.js';
+
+const SECURE = () => process.env.NODE_ENV === 'production';
+const SESSION_MS = 24 * 60 * 60 * 1000;
 
 const router = express.Router();
 
@@ -11,13 +15,14 @@ const router = express.Router();
  */
 router.post('/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) {
+    const identifier = String(req.body?.username ?? req.body?.email ?? '').trim();
+    const password = req.body?.password;
+    if (!identifier || typeof password !== 'string' || !password) {
       return res.status(400).json({ error: 'missing_credentials', message: 'Username and password required' });
     }
 
     const db = getDb();
-    const user = await db.collection('users').findOne({ username });
+    const user = await db.collection('users').findOne({ $or: [{ username: identifier }, { email: identifier.toLowerCase() }] });
     if (!user) {
       return res.status(401).json({ error: 'invalid_credentials', message: 'Invalid username or password' });
     }
@@ -52,7 +57,7 @@ router.post('/login', async (req, res) => {
       token_hash: tokenHash,
       ip_address: req.ip || req.connection.remoteAddress,
       user_agent: req.get('user-agent') || '',
-      expires_at: new Date(Date.now() + 24*60*60*1000),
+      expires_at: new Date(Date.now() + SESSION_MS),
       revoked_at: null,
       ...timestamps()
     });
@@ -61,6 +66,7 @@ router.post('/login', async (req, res) => {
       $set: { failed_attempts: 0, locked_until: null, last_login_at: new Date(), ...updateTimestamp() }
     });
 
+    res.setHeader('Set-Cookie', sessionCookie(token, SESSION_MS, SECURE()));
     res.json({
       token,
       user: {
@@ -91,6 +97,7 @@ router.post('/logout', authenticate, async (req, res) => {
         { $set: { revoked_at: new Date(), ...updateTimestamp() } }
       );
     }
+    res.setHeader('Set-Cookie', clearSessionCookie(SECURE()));
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);
@@ -141,8 +148,8 @@ router.post('/change-password', authenticate, async (req, res) => {
     if (!current_password || !new_password) {
       return res.status(400).json({ error: 'missing_fields', message: 'Current and new password required' });
     }
-    if (new_password.length < 6) {
-      return res.status(400).json({ error: 'password_too_short', message: 'Password must be at least 6 characters' });
+    if (new_password.length < 8) {
+      return res.status(400).json({ error: 'password_too_short', message: 'Password must be at least 8 characters' });
     }
 
     const db = getDb();

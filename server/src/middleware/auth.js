@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getDb, toObjectId } from '../db/mongodb.js';
+import { parseCookies, SESSION_COOKIE } from './cookies.js';
 
 /**
  * Authenticate middleware - validates JWT token from auth_sessions
@@ -7,15 +8,22 @@ import { getDb, toObjectId } from '../db/mongodb.js';
 export async function authenticate(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
+    let token = null;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+      req.authVia = 'bearer';
+    } else {
+      token = parseCookies(req.headers.cookie)[SESSION_COOKIE] || null;
+      req.authVia = 'cookie';
+    }
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
       return res.status(401).json({
         error: 'missing_token',
-        message: 'Authorization token required'
+        message: 'Authentication required'
       });
     }
 
-    const token = authHeader.substring(7);
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
     const db = getDb();

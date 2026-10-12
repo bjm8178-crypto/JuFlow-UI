@@ -60,7 +60,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/deliveries - Create delivery for an order
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const { order_id, rider_id, notes } = req.body;
 
@@ -108,7 +108,7 @@ router.post('/', authenticate, async (req, res, next) => {
 });
 
 // PATCH /api/deliveries/:id - Update delivery status/rider
-router.patch('/:id', authenticate, async (req, res, next) => {
+router.patch('/:id', authenticate, requireRole('admin', 'cashier', 'rider'), async (req, res, next) => {
   try {
     const { status, rider_id, notes, pickup_time, delivery_time } = req.body;
     const updates = {};

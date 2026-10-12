@@ -1,13 +1,14 @@
 import express from 'express';
 import { getDb, toObjectId, timestamps, updateTimestamp } from '../db/mongodb.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
+import { validateSale } from '../lib/sale.js';
 
 const router = express.Router();
 
 // GET /api/sales - List sales
 // ?date=YYYY-MM-DD  (default: today Philippine time)
 // ?is_test=true|false
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
     const db = getDb();
     const { date, is_test } = req.query;
@@ -16,6 +17,9 @@ router.get('/', authenticate, async (req, res, next) => {
     const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
     let startDate, endDate;
     if (date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || Number.isNaN(Date.parse(String(date)))) {
+        return res.status(400).json({ error: 'validation_error', message: 'date must be YYYY-MM-DD' });
+      }
       const [y, m, d] = date.split('-').map(Number);
       startDate = new Date(Date.UTC(y, m - 1, d) - PH_OFFSET_MS);
       endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
@@ -45,7 +49,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/sales/summary - Aggregated sales stats for today
-router.get('/summary', authenticate, async (req, res, next) => {
+router.get('/summary', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
     const db = getDb();
     const { date } = req.query;
@@ -53,6 +57,9 @@ router.get('/summary', authenticate, async (req, res, next) => {
     const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
     let startDate, endDate;
     if (date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || Number.isNaN(Date.parse(String(date)))) {
+        return res.status(400).json({ error: 'validation_error', message: 'date must be YYYY-MM-DD' });
+      }
       const [y, m, d] = date.split('-').map(Number);
       startDate = new Date(Date.UTC(y, m - 1, d) - PH_OFFSET_MS);
       endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
@@ -130,7 +137,7 @@ router.get('/summary', authenticate, async (req, res, next) => {
 });
 
 // GET /api/sales/:id - Get single sale
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
     const db = getDb();
     const sale = await db.collection('sales').findOne({ _id: toObjectId(req.params.id) });
@@ -141,63 +148,61 @@ router.get('/:id', authenticate, async (req, res, next) => {
   }
 });
 
-// POST /api/sales - Record a sale (cashier endpoint)
-// Also accessible at POST /api/cashier/sales
-router.post('/', authenticate, async (req, res, next) => {
+// Records a sale. Used by POST /api/sales (admin/cashier users) and
+// POST /api/cashier/sales (cashier device with CASHIER_API_TOKEN).
+//  - same transaction_id + same content  -> 200, returns the existing sale (safe retry)
+//  - same transaction_id + different content -> 409
+export async function recordSale(req, res, next) {
   try {
-    const {
-      order_id,
-      transaction_id,  // idempotency key
-      items,           // [{ name, quantity, price_centavos }]
-      total_centavos,
-      payment_method,  // 'cash' | 'exact' | 'gcash'
-      cash_tendered_centavos,
-      gcash_reference,
-      is_test_sale
-    } = req.body;
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'validation_error', message: 'Sale items are required' });
-    }
-    if (total_centavos === undefined || total_centavos <= 0) {
-      return res.status(400).json({ error: 'validation_error', message: 'Valid total is required' });
-    }
-
+    const { sale: clean, digest } = validateSale(req.body);
     const db = getDb();
 
-    // Idempotency: if same transaction_id already exists, return existing
-    if (transaction_id) {
-      const existing = await db.collection('sales').findOne({ transaction_id });
-      if (existing) {
-        return res.status(200).json(existing);
-      }
-    }
+    const findExisting = () => clean.transaction_id ? db.collection('sales').findOne({ transaction_id: clean.transaction_id }) : null;
+    const respondExisting = (existing) => existing.digest === digest
+      ? res.status(200).json({ ...existing, duplicate: true })
+      : res.status(409).json({ error: 'transaction_conflict', message: 'Transaction ID already exists with different content' });
 
+    const existing = await findExisting();
+    if (existing) return respondExisting(existing);
+
+    const order_id = req.body.order_id ? toObjectId(req.body.order_id) : null;
     const sale = {
-      order_id: order_id ? toObjectId(order_id) : null,
-      transaction_id: transaction_id || null,
-      items: items.map(i => ({
-        name: String(i.name).trim(),
-        quantity: parseInt(i.quantity),
-        price_centavos: parseInt(i.price_centavos)
-      })),
-      total_centavos: parseInt(total_centavos),
-      payment_method: payment_method || 'cash',
-      cash_tendered_centavos: payment_method === 'cash' ? parseInt(cash_tendered_centavos || 0) : null,
-      gcash_reference: gcash_reference || null,
-      is_test_sale: is_test_sale === true,
+      order_id,
+      ...clean,
+      digest,
       recorded_by: toObjectId(req.user.id),
       sale_time: new Date(),
       ...timestamps()
     };
+    if (!sale.transaction_id) delete sale.transaction_id; // partial unique index only covers real ids
 
-    const result = await db.collection('sales').insertOne(sale);
-    sale._id = result.insertedId;
-
-    res.status(201).json(sale);
+    try {
+      const result = await db.collection('sales').insertOne(sale);
+      sale._id = result.insertedId;
+      return res.status(201).json(sale);
+    } catch (err) {
+      // Concurrent retry with the same transaction_id lost the race on the unique index
+      if (err?.code === 11000) {
+        const winner = await findExisting();
+        if (winner) return respondExisting(winner);
+      }
+      throw err;
+    }
   } catch (error) {
     next(error);
   }
-});
+}
+
+router.post('/', authenticate, requireRole('admin', 'cashier'), recordSale);
+
+// Router mounted at /api/cashier/sales (token auth is applied in index.js)
+export const cashierRouter = express.Router();
+// The cashier device must always send an idempotency key so retries are safe.
+cashierRouter.post('/', (req, res, next) => {
+  if (typeof req.body?.transaction_id !== 'string' || !req.body.transaction_id.trim()) {
+    return res.status(400).json({ error: 'validation_error', message: 'transaction_id is required' });
+  }
+  next();
+}, recordSale);
 
 export default router;

@@ -1,6 +1,6 @@
 import express from 'express';
 import { getDb, toObjectId, timestamps, updateTimestamp } from '../db/mongodb.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ function generateOrderNumber(count) {
 
 // GET /api/orders - List orders
 // ?filter=active|delivered|all  (default: active)
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const db = getDb();
     const filter = req.query.filter || 'active';
@@ -38,7 +38,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/orders/:id - Get order by ID
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const db = getDb();
     const order = await db.collection('orders').findOne({
@@ -54,7 +54,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/orders - Create order
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const {
       customer_id,
@@ -145,7 +145,7 @@ router.post('/', authenticate, async (req, res, next) => {
 });
 
 // PATCH /api/orders/:id - Update order (status, rider, payment flags)
-router.patch('/:id', authenticate, async (req, res, next) => {
+router.patch('/:id', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const { status, rider, rider_id, payment_verified, cash_collected, notes } = req.body;
     const updates = {};

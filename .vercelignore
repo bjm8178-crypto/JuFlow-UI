@@ -1,0 +1,13 @@
+# Vercel only serves the static frontend. Everything else stays out of the deployment.
+server
+*.py
+__pycache__
+serve.js
+package.json
+package-lock.json
+signup.html
+render.yaml
+*.md
+README.txt
+.cashier-token*
+*.sqlite3

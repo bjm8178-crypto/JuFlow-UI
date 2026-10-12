@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { connect, timestamps } from './mongodb.js';
 
 async function seed() {
@@ -50,8 +51,8 @@ async function seed() {
 
     // 2. Seed Default Admin User
     console.log('\n👤 Creating default admin user...');
-    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || 'admin123';
-    const adminPasswordHash = await bcrypt.hash(initialPassword, 10);
+    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || crypto.randomBytes(9).toString('base64url');
+    const adminPasswordHash = await bcrypt.hash(initialPassword, 12);
     const adminUser = await db.collection('users').insertOne({
       username: 'admin',
       password_hash: adminPasswordHash,

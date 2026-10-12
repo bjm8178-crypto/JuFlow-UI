@@ -27,8 +27,8 @@ router.post('/', authenticate, requireRole('admin'), async (req, res) => {
     if (!username || !password || !full_name || role_id === undefined) {
       return res.status(400).json({ error: 'missing_fields', message: 'Username, password, full name, and role required' });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'password_too_short', message: 'Password must be at least 6 characters' });
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'password_too_short', message: 'Password must be at least 8 characters' });
     }
 
     const db = getDb();
@@ -150,7 +150,7 @@ router.post('/:id/reset-password', authenticate, requireRole('admin'), async (re
     const { id } = req.params;
     const { new_password } = req.body;
     if (!new_password) return res.status(400).json({ error: 'missing_password', message: 'New password required' });
-    if (new_password.length < 6) return res.status(400).json({ error: 'password_too_short', message: 'Password must be at least 6 characters' });
+    if (new_password.length < 8) return res.status(400).json({ error: 'password_too_short', message: 'Password must be at least 8 characters' });
 
     const db = getDb();
     const passwordHash = await bcrypt.hash(new_password, 10);

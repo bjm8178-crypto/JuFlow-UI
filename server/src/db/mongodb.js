@@ -111,7 +111,13 @@ async function createIndexes() {
     await db.collection('settings').createIndex({ key: 1 }, { unique: true });
 
     // Sales
-    await db.collection('sales').createIndex({ transaction_id: 1 }, { unique: true, sparse: true });
+    // Older databases have a sparse index that treats transaction_id:null as a value
+    // (second sale without an id -> duplicate key). Replace it with a partial index.
+    await db.collection('sales').dropIndex('transaction_id_1').catch(() => {});
+    await db.collection('sales').createIndex(
+      { transaction_id: 1 },
+      { name: 'transaction_id_unique', unique: true, partialFilterExpression: { transaction_id: { $type: 'string' } } }
+    );
     await db.collection('sales').createIndex({ sale_time: -1 });
     await db.collection('sales').createIndex({ is_test_sale: 1 });
 

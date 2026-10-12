@@ -1,11 +1,11 @@
 import express from 'express';
 import { getDb, toObjectId, timestamps, updateTimestamp } from '../db/mongodb.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // GET /api/customers - List customers (optionally search by name/phone/messenger)
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const db = getDb();
     const { search } = req.query;
@@ -28,7 +28,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/customers/:id - Get customer by ID
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const db = getDb();
     const customer = await db.collection('customers').findOne({
@@ -44,7 +44,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // GET /api/customers/:id/orders - Get orders for a customer
-router.get('/:id/orders', authenticate, async (req, res, next) => {
+router.get('/:id/orders', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const db = getDb();
     const customerId = toObjectId(req.params.id);
@@ -59,7 +59,7 @@ router.get('/:id/orders', authenticate, async (req, res, next) => {
 });
 
 // POST /api/customers - Create customer
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const {
       name,
@@ -108,7 +108,7 @@ router.post('/', authenticate, async (req, res, next) => {
 });
 
 // PATCH /api/customers/:id - Update customer
-router.patch('/:id', authenticate, async (req, res, next) => {
+router.patch('/:id', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const { name, phone, messenger, address, landmark, landmark_photo, lat, lng, is_active } = req.body;
     const updates = {};
