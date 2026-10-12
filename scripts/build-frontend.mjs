@@ -98,7 +98,7 @@ export async function buildFrontend(root = projectRoot, app = process.env.APP ||
     await mkdir(path.dirname(destination), { recursive: true });
     // Only transform mobile app text assets; binary icons and shared code are copied unchanged.
     // Absolute app paths become root paths on each app's *own* origin.
-    if (app !== 'all' && source.startsWith(app + '/') && /\\.(?:html|js|css|webmanifest)$/.test(source)) {
+    if (app !== 'all' && source.startsWith(app + '/') && /\.(?:html|js|css|webmanifest)$/.test(source)) {
       const content = await readFile(input, 'utf8');
       await writeFile(destination, content.replaceAll('/' + app + '/', '/'));
     } else {
