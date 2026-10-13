@@ -28,7 +28,7 @@ router.get('/export.csv', authenticate, requireRole('admin'), async (req, res, n
     const rows = await getDb().collection('sales').find(filter(req, start, end)).sort({ sale_time: -1, _id: -1 }).limit(10001).toArray();
     if (rows.length > 10000) return res.status(400).json({ error: 'export_too_large', message: 'Narrow date range to at most 10000 transactions' });
     const cell = value => '"' + String(value ?? '').replace(/^[=+@-]/, "' $&").replaceAll('"', '""') + '"';
-    const fields = ['transaction_id', 'order_id', 'sale_time', 'received_at', 'source', 'payment_method', 'food_centavos', 'fee_centavos', 'total_centavos', 'recorded_by', 'is_test_sale'];
+    const fields = ['transaction_id', 'order_id', 'sale_time', 'received_at', 'source', 'payment_method', 'food_centavos', 'fee_centavos', 'total_centavos', 'recorded_by'];
     res.set('Content-Disposition', 'attachment; filename="sales.csv"').type('text/csv').send(fields.join(',') + '\r\n' + rows.map(row => fields.map(k => cell(row[k] instanceof Date ? row[k].toISOString() : row[k])).join(',')).join('\r\n'));
   } catch (error) { next(error); }
 });
