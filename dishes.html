@@ -68,7 +68,7 @@
       </div>
       <div class="form-actions">
         <button class="primary" id="save">Save dish</button>
-        <button type="button" class="secondary" id="reset" hidden>Cancel edit</button>
+        <button type="button" class="secondary" id="cancel-edit" hidden>Cancel edit</button>
       </div>
       <p id="msg" class="status-msg" role="status"></p>
     </form>
@@ -88,7 +88,7 @@ const $=id=>document.getElementById(id);let dishes=[],picked=new Set();
 const api=async(u,o={})=>{const r=await fetch('/api'+u,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...o});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||r.status);return d};
 const say=(t,err)=>{const m=$('msg');m.textContent=t;m.classList.toggle('error',!!err);if(!err&&window.showDemoNotice)showDemoNotice(t)};
 function resize(file){return new Promise((ok,no)=>{const img=new Image();img.onload=()=>{const s=Math.min(1,480/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);ok(c.toDataURL('image/webp',.8))};img.onerror=no;img.src=URL.createObjectURL(file)})}
-function resetForm(){$('f').reset();$('id').value='';$('reset').hidden=true;$('form-title').textContent='Add a dish'}
+function resetForm(){$('f').reset();$('id').value='';$('cancel-edit').hidden=true;$('form-title').textContent='Add a dish'}
 let onSale=[],sold={};
 async function loadSelling(){const[m,c]=await Promise.all([api('/menu/today'),api('/sales/counts').catch(()=>({counts:{}}))]);onSale=m.dishes||[];sold=c.counts||{};renderSelling(m.date)}
 function renderSelling(date){const L=$('selling-list');L.textContent='';
@@ -114,7 +114,7 @@ function render(){const L=$('list');L.textContent='';
   const lab=document.createElement('label');lab.className='serve-toggle';lab.append(cb,'Serve today');
   const acts=document.createElement('div');acts.className='row-actions';
   const e=Object.assign(document.createElement('button'),{type:'button',textContent:'Edit',className:'secondary'});
-  e.onclick=()=>{$('id').value=d._id;$('name').value=d.name;$('price').value=(d.price_centavos/100).toFixed(2);$('reset').hidden=false;$('form-title').textContent='Edit dish';scrollTo(0,0);$('name').focus()};
+  e.onclick=()=>{$('id').value=d._id;$('name').value=d.name;$('price').value=(d.price_centavos/100).toFixed(2);$('cancel-edit').hidden=false;$('form-title').textContent='Edit dish';scrollTo(0,0);$('name').focus()};
   const x=Object.assign(document.createElement('button'),{type:'button',textContent:'Delete',className:'secondary danger'});
   x.onclick=async()=>{if(!confirm('Delete '+d.name+'?'))return;try{await api('/products/'+d._id,{method:'DELETE'});picked.delete(d._id);await load()}catch(er){say(er.message,true)}};
   acts.append(e,x);
@@ -123,7 +123,7 @@ $('f').onsubmit=async ev=>{ev.preventDefault();$('save').disabled=true;say('Savi
  const id=$('id').value;const d=id?await api('/products/'+id,{method:'PATCH',body}):await api('/products',{method:'POST',body});
  if($('file').files[0])await api('/products/'+d._id+'/image',{method:'POST',body:JSON.stringify({data_url:await resize($('file').files[0])})});
  resetForm();say('Saved.');await load()}catch(er){say(er.message,true)}finally{$('save').disabled=false}};
-$('reset').onclick=()=>{resetForm();say('')};
+$('cancel-edit').onclick=()=>{resetForm();say('')};
 $('refresh-selling').onclick=()=>loadSelling().catch(er=>say(er.message,true));
 setInterval(()=>{if(!document.hidden&&onSale.length)loadSelling().catch(()=>{})},20000);
 document.querySelectorAll('[data-save-menu]').forEach(b=>b.onclick=async()=>{try{await api('/menu/today',{method:'PUT',body:JSON.stringify({product_ids:[...picked]})});say("Today's menu saved. Cashiers will see it now.");await loadSelling()}catch(er){say(er.message,true)}});
