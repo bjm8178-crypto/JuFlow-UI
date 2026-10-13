@@ -271,3 +271,26 @@ test('local server denies allowlisted leaf and parent symlinks and arbitrary nes
   }
   assert.equal((await request(frontend, '/cashier/index.html')).status, 200);
 });
+
+test('sales reports are real-sales only: no demo/test selector', async () => {
+  const sales = await readFile(path.join(projectRoot, 'sales.html'), 'utf8');
+  const analytics = await readFile(path.join(projectRoot, 'analytics.js'), 'utf8');
+  assert.match(sales, /id="sales-date"/);
+  assert.doesNotMatch(sales, /report-test/, 'no demo/test sales dropdown');
+  assert.doesNotMatch(analytics, /report-test|is_test/, 'reports never request test sales');
+});
+
+test('all three JuKi apps use the consistent public brand without renaming API identifiers', async () => {
+  for (const name of ['index.html', 'login.html', 'dashboard.html', 'orders.html', 'delivery-map.html',
+    'customers.html', 'sales.html', 'dishes.html', 'users.html', 'cashier/index.html', 'rider/index.html']) {
+    const html = await readFile(path.join(projectRoot, name), 'utf8');
+    assert.match(html, /JuKi/, name + ' shows JuKi branding');
+    assert.doesNotMatch(html, /\bJuki\b|Ju Kitchen|JU KITCHEN OPERATIONS/, name + ' has no stale public branding');
+  }
+  for (const app of ['cashier', 'rider']) {
+    const manifest = JSON.parse(await readFile(path.join(projectRoot, app, 'manifest.webmanifest'), 'utf8'));
+    assert.ok(manifest.name.startsWith('JuKi '), app + ' PWA is labeled JuKi');
+  }
+  const config = JSON.parse(await readFile(path.join(projectRoot, 'vercel.json'), 'utf8'));
+  assert.equal(config.rewrites[0].destination, 'https://juflow-api.onrender.com/api/:path*', 'retain the functional API host');
+});

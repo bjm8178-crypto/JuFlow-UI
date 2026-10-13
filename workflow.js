@@ -93,7 +93,7 @@
     $('#item-rows').append(row);
   }
   function orderValues() {
-    const items = [...document.querySelectorAll('.item-row')].map(row => { const inputs = row.querySelectorAll('input'); return { name: inputs[0].value.trim(), quantity: Number(inputs[1].value), price_centavos: Math.round(Number(inputs[2].value) * 100) }; });
+    const items = [...document.querySelectorAll('.item-row')].map(row => { const inputs = row.querySelectorAll('input'); const picked = row.querySelector('select')?.value; const item = { name: inputs[0].value.trim(), quantity: Number(inputs[1].value), price_centavos: Math.round(Number(inputs[2].value) * 100) }; if (picked && picked !== '__custom') item.product_id = picked; return item; });
     const fee = Math.round(Number($('#delivery-fee').value) * 100);
     const total = items.reduce((sum, item) => sum + item.quantity * item.price_centavos, fee);
     const method = $('#payment-method').value;

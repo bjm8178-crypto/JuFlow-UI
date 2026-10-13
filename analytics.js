@@ -37,7 +37,7 @@
           <button type="button" data-range="clear">Clear dates</button>
         </div>
       </div>
-      <label class="field"><span>Data</span><select id="report-test"><option value="false">Real sales</option><option value="true">Test sales</option><option value="all">All sales</option></select></label>
+      
       <label class="field"><span>Source</span><select id="report-source"><option value="">All sources</option><option value="order">Orders</option><option value="walk_in">Walk-in</option><option value="device">Device</option></select></label>
     </div>
     <div id="report-breakdown" class="report-breakdown"></div>
@@ -45,7 +45,7 @@
     <div class="table-scroll"><table class="report-table"><thead><tr><th>Transaction</th><th>Occurred (Manila)</th><th>Source</th><th>Payment</th><th class="num">Food</th><th class="num">Fee</th><th class="num">Total</th><th>Actor</th></tr></thead><tbody id="report-feed"></tbody></table></div>
     <div class="report-pager"><span id="report-page" role="status"></span><div class="pager-buttons"><button id="report-prev" type="button">&larr; Previous</button><button id="report-next" type="button">Next &rarr;</button></div></div>`;
   (document.querySelector('main') || document.body).appendChild(panel);
-  const query = () => new URLSearchParams({ date: el('sales-date')?.value || today(), ...(el('report-from').value ? { from: el('report-from').value } : {}), ...(el('report-to').value ? { to: el('report-to').value } : {}), is_test: el('report-test').value, ...(el('report-source').value ? { source: el('report-source').value } : {}) });
+  const query = () => new URLSearchParams({ date: el('sales-date')?.value || today(), ...(el('report-from').value ? { from: el('report-from').value } : {}), ...(el('report-to').value ? { to: el('report-to').value } : {}), ...(el('report-source').value ? { source: el('report-source').value } : {}) });
 
   let controller, sequence = 0, hadData = false, inFlight = false;
 
@@ -194,7 +194,7 @@
     fromEl.value = f; toEl.value = e; syncRange(); page = 1; refresh();
   }
   panel.querySelectorAll('[data-range]').forEach(b => { b.onclick = () => setRange(b.dataset.range); });
-  ['report-from', 'report-to', 'report-test', 'report-source'].forEach(id => { el(id).onchange = () => { syncRange(); page = 1; refresh(); }; });
+  ['report-from', 'report-to', 'report-source'].forEach(id => { el(id).onchange = () => { syncRange(); page = 1; refresh(); }; });
   syncRange();
   el('report-prev').onclick = () => { if (page > 1) { page--; refresh(); } };
   el('report-next').onclick = () => { page++; refresh(); };

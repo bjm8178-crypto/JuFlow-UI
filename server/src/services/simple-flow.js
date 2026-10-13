@@ -24,7 +24,7 @@ async function recordOrderSale(db, session, order, actor, now) {
     ...(order.payment_method === 'cash' ? { cash_tendered_centavos: order.cash_tendered_centavos } : {}),
     ...(order.payment_method === 'gcash' ? { gcash_reference: order.payment_reference } : {}),
     occurred_at: now.toISOString(),
-    is_test_sale: order.is_test_sale === true
+    is_test_sale: false
   }, { now });
   const sale = {
     ...clean, order_id: order._id, digest, source: 'order', event_id: `status:${order._id}`,

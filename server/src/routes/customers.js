@@ -13,7 +13,7 @@ router.get('/', authenticate, requireRole('admin', 'cashier'), async (req, res, 
 
     let query = { is_active: { $ne: false } };
     if (search) {
-      const re = { $regex: search, $options: 'i' };
+      const re = { $regex: String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
       query = { ...query, $or: [{ name: re }, { phone: re }, { messenger: re }] };
     }
 

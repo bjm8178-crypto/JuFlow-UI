@@ -132,8 +132,9 @@ test('today summary is shop-wide: Manila day, cents, payment breakdown, refunds 
   f.state.actor = admin;
   assert.equal((await f.request('/api/sales/today')).body.total_centavos, 1280);
   f.state.actor = cashier;
-  assert.equal((await f.request('/api/sales/today?is_test=all')).body.total_centavos, 1980);
-  assert.equal((await f.request('/api/sales/today?is_test=true')).body.total_centavos, 700);
+  // Test/demo sales can no longer be requested: the is_test parameter is ignored.
+  assert.equal((await f.request('/api/sales/today?is_test=all')).body.total_centavos, 1280);
+  assert.equal((await f.request('/api/sales/today?is_test=true')).body.total_centavos, 1280);
   assert.equal((await f.request('/api/sales/today?source=order')).body.total_centavos, 350);
 });
 
@@ -153,7 +154,7 @@ test('a refund row lowers the totals but is not counted as a transaction', async
 test('today summary returns zero totals when empty and validates reporting filters', async t => {
   const f = await salesFixture(t);
   assert.deepEqual((await f.request('/api/sales/today')).body, { date: '2026-10-13', timezone: 'Asia/Manila', total_centavos: 0, food_centavos: 0, fee_centavos: 0, transaction_count: 0, units_sold: 0, by_payment: [] });
-  for (const query of ['is_test=no', 'is_test[x]=true', 'is_test=true&is_test=false', 'source=invalid', 'source[x]=order']) {
+  for (const query of ['source=invalid', 'source[x]=order']) {
     assert.equal((await f.request('/api/sales/today?' + query)).status, 400);
   }
   assert.equal(f.pipelines.length, 1);
@@ -194,7 +195,7 @@ test('offline sale retries are idempotent but changed content and other owners c
   const replay = await f.request('/api/sales', 'POST', body);
   assert.equal(created.status, 201); assert.equal(replay.status, 200);
   assert.deepEqual(replay.body, { ...created.body, duplicate: true });
-  for (const changes of [{ occurred_at: now.toISOString() }, { fee_centavos: 40, total_centavos: 240 }, { is_test_sale: true }, { payment_method: 'exact' }, { items: [{ name: 'Other', quantity: 2, price_centavos: 100 }] }]) {
+  for (const changes of [{ occurred_at: now.toISOString() }, { fee_centavos: 40, total_centavos: 240 }, { payment_method: 'exact' }, { items: [{ name: 'Other', quantity: 2, price_centavos: 100 }] }]) {
     assert.equal((await f.request('/api/sales', 'POST', { ...body, ...changes })).status, 409);
   }
   for (const actor of [otherCashier, admin]) {

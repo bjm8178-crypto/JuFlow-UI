@@ -66,7 +66,7 @@ export function validateSale(body, { now = new Date(), allowBackdating = true } 
     payment_method: method,
     cash_tendered_centavos: tendered,
     gcash_reference: method === 'gcash' ? gcash_reference.trim() : null,
-    is_test_sale: is_test_sale === true,
+    is_test_sale: false, // test/demo sales are no longer accepted from any client
   };
   const digest = crypto.createHash('sha256').update(JSON.stringify(sale)).digest('hex');
   return { sale, digest };

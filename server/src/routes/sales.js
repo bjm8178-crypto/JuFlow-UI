@@ -8,11 +8,9 @@ import { notifySale } from '../services/notifications.js';
 
 const router = express.Router();
 function filter(req, start, end) {
-  const test = req.query.is_test ?? 'false';
-  if (!['true', 'false', 'all'].includes(test)) throw Object.assign(new Error('is_test must be true, false or all'), { status: 400 });
   const source = req.query.source;
   if (source && !['order', 'walk_in', 'device', 'refund'].includes(source)) throw Object.assign(new Error('Invalid source'), { status: 400 });
-  return { sale_time: { $gte: start, $lt: end }, voided_at: null, ...(test === 'all' ? {} : { is_test_sale: test === 'true' ? true : { $ne: true } }), ...(source ? { source } : {}) };
+  return { sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true }, ...(source ? { source } : {}) };
 }
 router.get('/', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
@@ -254,7 +252,7 @@ router.post('/:id/refund', authenticate, requireRole('admin', 'cashier'), async 
       items: lines.map(({ quantity, item }) => ({ name: item.name, quantity: -quantity, price_centavos: item.price_centavos, ...(item.product_id ? { product_id: item.product_id } : {}) })),
       food_centavos: -food, fee_centavos: -fee, total_centavos: -(food + fee),
       payment_method: sale.payment_method, cash_tendered_centavos: null, gcash_reference: null,
-      order_id: null, is_test_sale: sale.is_test_sale === true, voided_at: null,
+      order_id: null, is_test_sale: false, voided_at: null,
       occurred_at: now, sale_time: now, received_at: now, ...timestamps(),
       recorded_by: toObjectId(req.user.id), recorded_actor: req.user.id, recorded_role: req.user.role_name
     };
