@@ -37,7 +37,7 @@
           <button type="button" data-range="clear">Clear dates</button>
         </div>
       </div>
-      <label class="field"><span>Data</span><select id="report-test"><option value="false">Real sales</option><option value="true">Test sales</option><option value="all">All sales</option></select></label>
+      
       <label class="field"><span>Source</span><select id="report-source"><option value="">All sources</option><option value="order">Orders</option><option value="walk_in">Walk-in</option><option value="device">Device</option></select></label>
     </div>
     <div id="report-breakdown" class="report-breakdown"></div>
