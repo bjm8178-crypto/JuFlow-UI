@@ -1,7 +1,7 @@
 {
-  "name": "Juki Cashier",
+  "name": "JuKi Cashier",
   "short_name": "Cashier",
-  "description": "Point of sale and order management for Juki",
+  "description": "Point of sale and order management for JuKi",
   "id": "/cashier/",
   "start_url": "/cashier/?source=pwa",
   "scope": "/cashier/",
