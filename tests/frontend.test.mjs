@@ -271,3 +271,34 @@ test('local server denies allowlisted leaf and parent symlinks and arbitrary nes
   }
   assert.equal((await request(frontend, '/cashier/index.html')).status, 200);
 });
+
+test('sales data selector is visible beside business date and controls the whole report', async () => {
+  const sales = await readFile(path.join(projectRoot, 'sales.html'), 'utf8');
+  const analytics = await readFile(path.join(projectRoot, 'analytics.js'), 'utf8');
+  const toolbar = sales.match(/<div class="sales-toolbar">([\s\S]*?)<\/div>/);
+  assert.ok(toolbar, 'sales toolbar must exist');
+  assert.match(toolbar[1], /id="sales-date"/);
+  assert.match(toolbar[1], /<select id="report-test">/);
+  assert.match(toolbar[1], /value="false">Real sales/);
+  assert.match(toolbar[1], /value="true">Demo sales/);
+  assert.match(toolbar[1], /value="all">All sales/);
+  assert.equal((sales.match(/id="report-test"/g) || []).length, 1, 'only one sales-data dropdown');
+  assert.doesNotMatch(analytics, /<select id="report-test"/, 'report panel must not create a duplicate dropdown');
+  assert.match(analytics, /is_test:\s*el\('report-test'\)\.value/, 'API requests use selected sales mode');
+  assert.match(analytics, /'report-test',\s*'report-source'/, 'changing sales mode refreshes report');
+});
+
+test('all three JuKi apps use the consistent public brand without renaming API identifiers', async () => {
+  for (const name of ['index.html', 'login.html', 'dashboard.html', 'orders.html', 'delivery-map.html',
+    'customers.html', 'sales.html', 'dishes.html', 'users.html', 'cashier/index.html', 'rider/index.html']) {
+    const html = await readFile(path.join(projectRoot, name), 'utf8');
+    assert.match(html, /JuKi/, name + ' shows JuKi branding');
+    assert.doesNotMatch(html, /\bJuki\b|Ju Kitchen|JU KITCHEN OPERATIONS/, name + ' has no stale public branding');
+  }
+  for (const app of ['cashier', 'rider']) {
+    const manifest = JSON.parse(await readFile(path.join(projectRoot, app, 'manifest.webmanifest'), 'utf8'));
+    assert.ok(manifest.name.startsWith('JuKi '), app + ' PWA is labeled JuKi');
+  }
+  const config = JSON.parse(await readFile(path.join(projectRoot, 'vercel.json'), 'utf8'));
+  assert.equal(config.rewrites[0].destination, 'https://juflow-api.onrender.com/api/:path*', 'retain the functional API host');
+});
