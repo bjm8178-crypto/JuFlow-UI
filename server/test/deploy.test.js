@@ -75,6 +75,9 @@ describe('validateSale', () => {
     bad(s => { s.payment_method = 'bitcoin'; }, /payment_method/);
     bad(s => { s.cash_tendered_centavos = 100; }, /cover the total/);
     bad(s => { s.is_test_sale = 'yes'; }, /boolean/);
+    bad(s => { s.is_test_sale = true; }, /Demo sales are disabled/);
+    bad(s => { s.demo = true; }, /Demo sales are disabled/);
+    assert.equal(validateSale({ ...good(), is_test_sale: false }).sale.is_test_sale, false);
   });
   it('requires a reference for GCash and ignores tender for it', () => {
     bad(s => { s.payment_method = 'gcash'; }, /gcash_reference/);
