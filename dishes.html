@@ -88,7 +88,7 @@ const $=id=>document.getElementById(id);let dishes=[],picked=new Set();
 const api=async(u,o={})=>{const r=await fetch('/api'+u,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...o});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||r.status);return d};
 const say=(t,err)=>{const m=$('msg');m.textContent=t;m.classList.toggle('error',!!err);if(!err&&window.showDemoNotice)showDemoNotice(t)};
 function resize(file){return new Promise((ok,no)=>{const img=new Image();img.onload=()=>{const s=Math.min(1,480/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);ok(c.toDataURL('image/webp',.8))};img.onerror=no;img.src=URL.createObjectURL(file)})}
-function resetForm(){$('f').reset();$('id').value='';$('reset').hidden=true;$('form-title').textContent='Add a dish'}
+function resetForm(){HTMLFormElement.prototype.reset.call($('f'));$('id').value='';$('reset').hidden=true;$('form-title').textContent='Add a dish'}
 let onSale=[],sold={};
 async function loadSelling(){const[m,c]=await Promise.all([api('/menu/today'),api('/sales/counts').catch(()=>({counts:{}}))]);onSale=m.dishes||[];sold=c.counts||{};renderSelling(m.date)}
 function renderSelling(date){const L=$('selling-list');L.textContent='';

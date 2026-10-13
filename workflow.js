@@ -71,9 +71,24 @@
     // The existing map editor assumes every supplied customer has numeric coordinates.
     window.openCustomerPin(c && hasPin(c) ? c : null);
   }
+  let menuDishes = [];
+  async function loadMenu() {
+    try { const menu = await request('/menu/today'); menuDishes = Array.isArray(menu?.dishes) ? menu.dishes : []; }
+    catch { menuDishes = []; }
+  }
   function addItem() {
     const row = document.createElement('div'); row.className = 'item-row';
-    row.innerHTML = '<input aria-label="Food item" placeholder="Food item" required maxlength="120"><input aria-label="Quantity" type="number" min="1" max="999" step="1" value="1" required><input aria-label="Unit price in pesos" type="number" min=".01" max="100000" step=".01" placeholder="Pesos each" required><button type="button" class="text-button" aria-label="Remove item">Remove</button>';
+    const options = menuDishes.map(d => `<option value="${E(d._id)}">${E(d.name)} - ${money(d.price_centavos)}</option>`).join('');
+    row.innerHTML = '<select class="dish-select" aria-label="Dish from today\'s menu"><option value="">Choose a dish...</option>' + options + '<option value="__custom">Other item (type it)</option></select><input aria-label="Food item" placeholder="Food item" maxlength="120" hidden><input aria-label="Quantity" type="number" min="1" max="999" step="1" value="1" required><input aria-label="Unit price in pesos" type="number" min=".01" max="100000" step=".01" placeholder="Pesos each" required readonly><button type="button" class="text-button" aria-label="Remove item">Remove</button>';
+    const select = row.querySelector('select'), [name, , price] = row.querySelectorAll('input');
+    select.onchange = () => {
+      const custom = select.value === '__custom', dish = menuDishes.find(d => d._id === select.value);
+      name.hidden = !custom; name.required = custom; price.readOnly = !custom;
+      name.value = custom ? '' : dish ? dish.name : '';
+      price.value = custom || !dish ? '' : (dish.price_centavos / 100).toFixed(2);
+      totals();
+    };
+    if (!menuDishes.length) { select.value = '__custom'; row._auto = true; name.hidden = false; name.required = true; price.readOnly = false; }
     row.querySelector('button').onclick = () => { row.remove(); totals(); };
     $('#item-rows').append(row);
   }
@@ -95,6 +110,11 @@
     form.dataset.customer = c._id; $('#order-customer-name').textContent = c.name;
     $('#order-address').textContent = c.address + ' · ' + (c.landmark || 'No landmark') + (hasPin(c) ? '' : ' · No pin saved');
     $('#item-rows').innerHTML = ''; addItem(); totals(); $('#order-dialog').showModal();
+    // Refresh today's menu in the background; swap in the dropdown if the first row is still untouched.
+    loadMenu().then(() => {
+      const rows = [...document.querySelectorAll('.item-row')];
+      if (menuDishes.length && $('#order-dialog').open && rows.every(r => r._auto || !r.querySelector('select')?.value)) { $('#item-rows').innerHTML = ''; addItem(); totals(); }
+    });
   }
   async function saveOrder(form) {
     const value = orderValues();

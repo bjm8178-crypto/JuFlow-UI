@@ -310,3 +310,11 @@ body.has-order .checkout-bar{display:flex}
 .range-presets button.on{background:var(--orange-soft);border-color:#ecc9b3;color:var(--orange)}
 @media(max-width:850px){.report-filters{grid-template-columns:1fr 1fr}.report-filters .range-field{grid-column:1/-1}}
 @media(max-width:480px){.report-filters{grid-template-columns:1fr}.range-box{gap:6px;padding:4px 10px}}
+
+/* ---- Admin order form: dish picker ---- */
+.item-row{grid-template-columns:minmax(0,1fr) 62px 90px 20px}
+.item-row .dish-select{grid-column:1/-1}
+.item-row input[hidden]{display:none}
+.item-row input[readonly]{background:#f4f6f2;color:#46514b}
+.item-row input[hidden]+input{grid-column:1}
+@media(max-width:650px){.item-row{grid-template-columns:minmax(0,1fr) 50px 75px 18px}}
