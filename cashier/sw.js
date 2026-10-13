@@ -1,7 +1,7 @@
 // JuFlow Cashier App - Service Worker
 // Offline-first caching strategy for PWA
 
-const CACHE_VERSION = 'v4-pin-file';
+const CACHE_VERSION = 'v5-fee-null-fix';
 const CACHE_NAME = `juflow-cashier-${CACHE_VERSION}`;
 
 // Files to precache (app shell)

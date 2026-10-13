@@ -1,5 +1,5 @@
 /* JuFlow Cashier — New order
- * Phone / Messenger delivery orders: pick a customer, add dishes (priced by the server), choose zone + payment.
+ * Phone / Messenger delivery orders: pick a customer, add dishes (priced by the server), choose a delivery fee + payment.
  * Needs a connection. Retrying an unchanged form reuses one idempotency key, so an order can never be created twice.
  */
 (function () {
@@ -10,22 +10,18 @@
   const { h } = ui;
   const { peso, toCentavos, uuid } = C.fmt;
 
-  const data = { menu: [], zones: [], customers: [] };
-  const blank = () => ({ customer: null, qty: {}, zoneId: '', customFee: '', payMode: 'exact', tender: '', ref: '', notes: '', key: uuid(), busy: false, done: null, query: '' });
+  const data = { menu: [], customers: [] };
+  const blank = () => ({ customer: null, qty: {}, feeKey: 'free', payMode: 'exact', tender: '', ref: '', notes: '', key: uuid(), busy: false, done: null, query: '' });
   let draft = blank();
   const dirty = () => { draft.key = uuid(); };
 
   const lines = () => data.menu.filter((d) => draft.qty[d._id] > 0).map((d) => ({ dish: d, qty: draft.qty[d._id] }));
   const subtotal = () => lines().reduce((s, l) => s + l.qty * l.dish.price_centavos, 0);
-  const zone = () => data.zones.find((z) => z._id === draft.zoneId) || null;
-  const fee = () => {
-    if (draft.zoneId === 'custom') {
-      const c = draft.customFee.trim() === '' ? 0 : toCentavos(draft.customFee);
-      return Number.isFinite(c) && c >= 0 ? c : NaN;
-    }
-    const z = zone();
-    return z ? z.fee_centavos : 0;
-  };
+  // Delivery fee is one of three fixed choices.
+  const FEES = [['free', 'Free', 0], ['within', 'Within Saog', 2000], ['outside', 'Outside of Saog', 5000]];
+  const fee = () => (FEES.find((f) => f[0] === draft.feeKey) || FEES[0])[2];
+  // replaceChildren turns null/false into the text "null"/"false", so drop empty values first.
+  const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false && k !== ''));
   const total = () => subtotal() + (Number.isFinite(fee()) ? fee() : 0);
 
   function problem() {
@@ -43,15 +39,12 @@
   const explain = (err) => (err.network ? 'No connection. Try again in a moment.' : err.message || 'Something went wrong.');
 
   async function loadAll() {
-    const [menu, zones, customers] = await Promise.all([
+    const [menu, customers] = await Promise.all([
       api.get('/menu/today'),
-      api.get('/delivery-zones'),
       api.get('/customers?limit=8')
     ]);
     data.menu = (menu.dishes || []).filter((d) => d && d._id);
-    data.zones = (Array.isArray(zones) ? zones : []).filter((z) => z.is_active !== false);
     data.customers = Array.isArray(customers) ? customers : [];
-    if (draft.zoneId !== 'custom' && !zone()) draft.zoneId = data.zones.length ? data.zones[0]._id : 'custom';
     for (const id of Object.keys(draft.qty)) if (!data.menu.some((d) => d._id === id)) delete draft.qty[id];
   }
 
@@ -123,7 +116,7 @@
     const resultsEl = h('div', { class: 'row-list' });
 
     function paintResults() {
-      resultsEl.replaceChildren(...(data.customers.length
+      fill(resultsEl, ...(data.customers.length
         ? data.customers.map((c) => h('button', {
           type: 'button', class: 'customer-row',
           onclick: () => { draft.customer = c; dirty(); paintCustomer(); paintSummary(); }
@@ -147,14 +140,14 @@
     function paintCustomer() {
       if (draft.customer) {
         const c = draft.customer;
-        customerBox.replaceChildren(
+        fill(customerBox, 
           h('h3', { text: 'Customer' }),
           h('div', { class: 'customer-picked' },
             h('div', {}, h('strong', { text: c.name }), c.phone && h('div', { class: 'small', text: c.phone }), c.address && h('div', { class: 'muted small', text: c.address })),
             h('button', { type: 'button', class: 'link-btn', text: 'Change', onclick: () => { draft.customer = null; dirty(); paintCustomer(); paintSummary(); } })));
         return;
       }
-      customerBox.replaceChildren(
+      fill(customerBox, 
         h('h3', { text: 'Customer' }),
         h('input', {
           type: 'search', placeholder: 'Search name or phone', 'aria-label': 'Search customers', value: draft.query,
@@ -171,7 +164,7 @@
     /* items */
     function paintItems() {
       if (!data.menu.length) {
-        itemsBox.replaceChildren(h('h3', { text: 'Dishes' }), ui.state('empty', 'No dishes for today', 'Ask the admin to choose today’s menu.', { label: 'Refresh', run: ctx.refresh }));
+        fill(itemsBox, h('h3', { text: 'Dishes' }), ui.state('empty', 'No dishes for today', 'Ask the admin to choose today’s menu.', { label: 'Refresh', run: ctx.refresh }));
         return;
       }
       const set = (id, q) => {
@@ -179,7 +172,7 @@
         if (q) draft.qty[id] = q; else delete draft.qty[id];
         dirty(); paintItems(); paintSummary();
       };
-      itemsBox.replaceChildren(h('h3', { text: 'Dishes' }), ...data.menu.map((d) => {
+      fill(itemsBox, h('h3', { text: 'Dishes' }), ...data.menu.map((d) => {
         const q = draft.qty[d._id] || 0;
         return h('div', { class: 'item-row' },
           h('div', { class: 'item-main' }, h('strong', { text: d.name }), h('small', { text: peso(d.price_centavos) })),
@@ -192,21 +185,12 @@
 
     /* delivery fee */
     function paintFee() {
-      const select = h('select', {
-        'aria-label': 'Delivery zone',
-        onchange: (e) => { draft.zoneId = e.target.value; dirty(); paintFee(); paintSummary(); }
-      },
-      ...data.zones.map((z) => h('option', { value: z._id, selected: z._id === draft.zoneId, text: z.name + ' · ' + peso(z.fee_centavos) })),
-      h('option', { value: 'custom', selected: draft.zoneId === 'custom', text: 'Custom amount' }));
-      const z = zone();
-      feeBox.replaceChildren(
-        h('h3', { text: 'Delivery fee' }),
-        select,
-        draft.zoneId === 'custom' && h('input', {
-          type: 'number', inputmode: 'decimal', step: '0.01', min: '0', placeholder: 'Delivery fee (₱)', 'aria-label': 'Delivery fee in pesos', value: draft.customFee,
-          oninput: (e) => { draft.customFee = e.target.value; dirty(); paintSummary(); }
-        }),
-        z && z.estimated_minutes && h('p', { class: 'muted small', text: 'Usually about ' + z.estimated_minutes + ' minutes.' }));
+      const seg = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Delivery fee' },
+        ...FEES.map(([id, label, cents]) => h('button', {
+          type: 'button', role: 'radio', 'aria-checked': String(draft.feeKey === id), class: draft.feeKey === id ? 'on' : '',
+          onclick: () => { draft.feeKey = id; dirty(); paintFee(); paintSummary(); }, text: cents ? label + ' · ' + peso(cents) : label
+        })));
+      fill(feeBox, h('h3', { text: 'Delivery fee' }), seg);
     }
 
     /* payment */
@@ -229,10 +213,10 @@
           oninput: (e) => { draft.ref = e.target.value; dirty(); paintSummary(); }
         }));
       }
-      payBox.replaceChildren(h('h3', { text: 'Payment' }), seg, extra);
+      fill(payBox, h('h3', { text: 'Payment' }), seg, extra);
     }
 
-    notesBox.replaceChildren(
+    fill(notesBox, 
       h('h3', { text: 'Notes (optional)' }),
       h('textarea', {
         rows: '3', maxlength: '500', placeholder: 'Delivery instructions, special requests…', 'aria-label': 'Order notes', value: draft.notes,
@@ -245,7 +229,6 @@
       const f = Number.isFinite(fee()) ? fee() : 0;
       const t = sub + f;
       const p = problem();
-      const z = zone();
       const rows = [
         h('div', { class: 'totals-row' }, h('span', { text: 'Dishes' }), h('span', { text: peso(sub) })),
         h('div', { class: 'totals-row' }, h('span', { text: 'Delivery fee' }), h('span', { text: peso(f) }))
@@ -255,11 +238,8 @@
         if (Number.isFinite(c) && c >= t && t > 0) rows.push(h('div', { class: 'totals-row' }, h('span', { text: 'Change to prepare' }), h('span', { text: peso(c - t) })));
       }
       rows.push(h('div', { class: 'totals' }, h('span', { text: 'Total' }), h('strong', { text: peso(t) })));
-      const warn = z && z.min_order_centavos > 0 && sub > 0 && sub < z.min_order_centavos
-        ? h('p', { class: 'notice warn', text: 'This zone’s minimum order is ' + peso(z.min_order_centavos) + '.' }) : null;
-      summaryBox.replaceChildren(
+      fill(summaryBox, 
         ...rows,
-        warn,
         p && h('p', { class: 'muted small', text: p }),
         h('button', {
           type: 'button', class: 'app-btn primary full large', disabled: draft.busy || !!p,
@@ -294,7 +274,7 @@
     ctx.refresh();
     try {
       const order = await api.post('/orders', body);
-      draft = Object.assign(blank(), { zoneId: draft.zoneId, done: order });
+      draft = Object.assign(blank(), { done: order });
       ui.toast((order.order_number || 'Order') + ' created.', 'success');
     } catch (err) {
       draft.busy = false;
