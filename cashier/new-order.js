@@ -185,11 +185,11 @@
 
     /* delivery fee */
     function paintFee() {
-      const seg = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Delivery fee' },
+      const seg = h('div', { class: 'segmented fee', role: 'radiogroup', 'aria-label': 'Delivery fee' },
         ...FEES.map(([id, label, cents]) => h('button', {
           type: 'button', role: 'radio', 'aria-checked': String(draft.feeKey === id), class: draft.feeKey === id ? 'on' : '',
-          onclick: () => { draft.feeKey = id; dirty(); paintFee(); paintSummary(); }, text: cents ? label + ' · ' + peso(cents) : label
-        })));
+          onclick: () => { draft.feeKey = id; dirty(); paintFee(); paintSummary(); }
+        }, h('span', { text: label }), h('span', { class: 'fee-amt', text: peso(cents) }))));
       fill(feeBox, h('h3', { text: 'Delivery fee' }), seg);
     }
 

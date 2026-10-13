@@ -311,10 +311,10 @@ body.has-order .checkout-bar{display:flex}
 @media(max-width:850px){.report-filters{grid-template-columns:1fr 1fr}.report-filters .range-field{grid-column:1/-1}}
 @media(max-width:480px){.report-filters{grid-template-columns:1fr}.range-box{gap:6px;padding:4px 10px}}
 
-/* ---- Admin order form: dish picker ---- */
-.item-row{grid-template-columns:minmax(0,1fr) 62px 90px 20px}
-.item-row .dish-select{grid-column:1/-1}
+/* ---- Admin order form: dish picker (dish on its own line, then qty, price, remove) ---- */
+.item-row,.item-row:has(*){grid-template-columns:84px minmax(0,1fr) auto;gap:8px;align-items:center;margin-bottom:12px}
+.item-row .dish-select,.item-row .item-name{grid-column:1/-1}
 .item-row input[hidden]{display:none}
 .item-row input[readonly]{background:#f4f6f2;color:#46514b}
-.item-row input[hidden]+input{grid-column:1}
-@media(max-width:650px){.item-row{grid-template-columns:minmax(0,1fr) 50px 75px 18px}}
+.item-row .text-button{margin:0;padding:8px 4px;white-space:nowrap}
+@media(max-width:650px){.item-row,.item-row:has(*){grid-template-columns:84px minmax(0,1fr) auto;gap:8px}}

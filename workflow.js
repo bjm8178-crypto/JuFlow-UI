@@ -79,7 +79,7 @@
   function addItem() {
     const row = document.createElement('div'); row.className = 'item-row';
     const options = menuDishes.map(d => `<option value="${E(d._id)}">${E(d.name)} - ${money(d.price_centavos)}</option>`).join('');
-    row.innerHTML = '<select class="dish-select" aria-label="Dish from today\'s menu"><option value="">Choose a dish...</option>' + options + '<option value="__custom">Other item (type it)</option></select><input aria-label="Food item" placeholder="Food item" maxlength="120" hidden><input aria-label="Quantity" type="number" min="1" max="999" step="1" value="1" required><input aria-label="Unit price in pesos" type="number" min=".01" max="100000" step=".01" placeholder="Pesos each" required readonly><button type="button" class="text-button" aria-label="Remove item">Remove</button>';
+    row.innerHTML = '<select class="dish-select" aria-label="Dish from today\'s menu"><option value="">Choose a dish...</option>' + options + '<option value="__custom">Other item (type it)</option></select><input class="item-name" aria-label="Food item" placeholder="Food item" maxlength="120" hidden><input aria-label="Quantity" type="number" min="1" max="999" step="1" value="1" required><input aria-label="Unit price in pesos" type="number" min=".01" max="100000" step=".01" placeholder="Pesos each" required readonly><button type="button" class="text-button" aria-label="Remove item">Remove</button>';
     const select = row.querySelector('select'), [name, , price] = row.querySelectorAll('input');
     select.onchange = () => {
       const custom = select.value === '__custom', dish = menuDishes.find(d => d._id === select.value);

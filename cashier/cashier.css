@@ -103,6 +103,15 @@
   .qty-btn { width: 46px; height: 46px; }
 }
 
+/* Delivery fee: one choice per row so the names never get squeezed */
+.segmented.fee { flex-direction: column; gap: 4px; }
+.segmented.fee button {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 52px; padding: 0 16px; text-align: left; font-size: 16px;
+}
+.segmented.fee .fee-amt { font-weight: 700; font-variant-numeric: tabular-nums; }
+.segmented.fee button:not(.on) .fee-amt { color: var(--text-muted); }
+
 /* ---------- Orders ---------- */
 .order-list { display: flex; flex-direction: column; }
 
