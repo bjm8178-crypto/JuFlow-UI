@@ -207,7 +207,7 @@ body.has-order .checkout-bar{display:flex}
 .report-heading{padding-bottom:4px}
 .export-btn{display:inline-flex;align-items:center;gap:8px;padding:9px 14px;border:1px solid #ecc9b3;border-radius:8px;background:var(--orange-soft);color:var(--orange);font-size:12px;font-weight:650;white-space:nowrap}
 .export-btn .icon{width:16px;height:16px}
-.report-filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:18px 22px}
+.report-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;padding:18px 22px}
 .report-breakdown{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 22px}
 .breakdown-item{background:#fafbf8;border:1px solid var(--border);border-radius:9px;padding:12px 16px}
 .breakdown-item span{display:block;font-size:11px;color:var(--muted)}
