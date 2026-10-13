@@ -65,7 +65,7 @@ test('settings use concrete typed keys, including seeded compatibility keys', ()
     assert.equal(validateSetting(key, { value: 'Asia/Manila' }).value, 'Asia/Manila');
     bad(() => validateSetting(key, { value: 'UTC' }));
   }
-  for (const key of ['test_mode', 'require_gcash_proof']) {
+  for (const key of ['require_gcash_proof']) {
     assert.equal(validateSetting(key, { value: false }).value, false);
     bad(() => validateSetting(key, { value: 'false' }));
   }
@@ -73,6 +73,7 @@ test('settings use concrete typed keys, including seeded compatibility keys', ()
   for (const value of [[], {}, ['cash', ' cash '], ['bitcoin'], [false], Array(4).fill('cash')]) bad(() => validateSetting('payment_methods', { value }));
   for (const body of [null, [], {}, { value: 'A', unknown: 1 }, { value: 'A', description: {} }, { value: 'A', group_name: ['general'] }]) bad(() => validateSetting('shop_name', body));
   bad(() => validateSetting('arbitrary_secret', { value: 'A' }));
+  bad(() => validateSetting('test_mode', { value: false }));
   bad(() => validateSetting('tax_rate', { value: Infinity }));
   assert.equal(validateSetting('tax_rate', { value: 12 }).value, 12);
   assert.equal(validateSetting('currency', { value: 'PHP' }).value, 'PHP');

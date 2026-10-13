@@ -45,6 +45,7 @@ export function validateSale(body, { now = new Date(), allowBackdating = true } 
   const method = payment_method ?? 'cash';
   if (!METHODS.includes(method)) fail('payment_method must be cash, exact or gcash');
   if (is_test_sale !== undefined && typeof is_test_sale !== 'boolean') fail('is_test_sale must be boolean');
+  if (is_test_sale === true || body.demo === true) fail('Demo sales are disabled');
 
   let tendered = null;
   if (method === 'cash') {
@@ -66,7 +67,7 @@ export function validateSale(body, { now = new Date(), allowBackdating = true } 
     payment_method: method,
     cash_tendered_centavos: tendered,
     gcash_reference: method === 'gcash' ? gcash_reference.trim() : null,
-    is_test_sale: false, // test/demo sales are no longer accepted from any client
+    is_test_sale: false, // Keep persisted real-sale flag for legacy filtering and compatibility
   };
   const digest = crypto.createHash('sha256').update(JSON.stringify(sale)).digest('hex');
   return { sale, digest };
