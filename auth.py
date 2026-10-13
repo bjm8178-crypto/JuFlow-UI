@@ -1,4 +1,4 @@
-"""auth.py - stdlib-only server-side auth for JuFlow (PBKDF2 + DB-backed sessions)."""
+"""auth.py - stdlib-only server-side auth for Juki (PBKDF2 + DB-backed sessions)."""
 import hashlib, hmac, json, os, secrets, sqlite3, time, re
 from contextlib import contextmanager
 from urllib.parse import unquote, urlsplit, quote

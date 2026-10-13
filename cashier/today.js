@@ -1,4 +1,4 @@
-/* JuFlow Cashier — Today
+/* Juki Cashier — Today
  * Totals for today, straight from the same sales the + / − buttons record.
  */
 (function () {

@@ -1,4 +1,4 @@
-/* JuFlow Cashier — New order
+/* Juki Cashier — New order
  * Phone / Messenger delivery orders: pick a customer, add dishes (priced by the server), choose a delivery fee + payment.
  * Needs a connection. Retrying an unchanged form reuses one idempotency key, so an order can never be created twice.
  */

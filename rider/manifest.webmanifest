@@ -1,7 +1,7 @@
 {
-  "name": "JuFlow Rider",
+  "name": "Juki Rider",
   "short_name": "Rider",
-  "description": "Delivery management and navigation for JuFlow",
+  "description": "Delivery management and navigation for Juki",
   "id": "/rider/",
   "start_url": "/rider/?source=pwa",
   "scope": "/rider/",

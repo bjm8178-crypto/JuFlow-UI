@@ -15,6 +15,7 @@ const device = { id: 'cashier-device', role_name: 'cashier' };
 const input = (changes = {}) => ({ transaction_id: 'offline-1', items: [{ name: 'Meal', quantity: 2, price_centavos: 100 }], fee_centavos: 30, total_centavos: 230, payment_method: 'cash', ...changes });
 const matches = (doc, query) => Object.entries(query).every(([key, expected]) => {
   if (expected === null) return doc[key] == null;
+  if (expected && '$ne' in Object(expected)) return String(doc[key]) !== String(expected.$ne);
   if (expected && '$gte' in Object(expected)) return doc[key] >= expected.$gte && doc[key] < expected.$lt;
   return String(doc[key]) === String(expected);
 });
@@ -127,7 +128,7 @@ test('today summary is shop-wide: Manila day, cents, payment breakdown, refunds 
   assert.deepEqual(today.body, { date: '2026-10-13', timezone: 'Asia/Manila', total_centavos: 1280, food_centavos: 1250, fee_centavos: 30, transaction_count: 5, units_sold: 6, by_payment: [
     { _id: 'cash', total_centavos: 320, transaction_count: 2 }, { _id: 'exact', total_centavos: 110, transaction_count: 1 }, { _id: 'gcash', total_centavos: 850, transaction_count: 2 }
   ] });
-  assert.deepEqual(f.pipelines[0][0].$match, { sale_time: { $gte: now, $lt: new Date('2026-10-13T16:00:00Z') }, voided_at: null, is_test_sale: false });
+  assert.deepEqual(f.pipelines[0][0].$match, { sale_time: { $gte: now, $lt: new Date('2026-10-13T16:00:00Z') }, voided_at: null, is_test_sale: { $ne: true } });
   f.state.actor = admin;
   assert.equal((await f.request('/api/sales/today')).body.total_centavos, 1280);
   f.state.actor = cashier;

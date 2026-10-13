@@ -1,4 +1,4 @@
-# JuFlow Implementation Status
+# Juki Implementation Status
 
 **Last updated:** 2026-10-12
 **How this was checked:** by reading the code. Nothing here has been run against a real MongoDB, Render or Vercel yet, and `npm test` was not run for this update. Treat "done" as "present in code".

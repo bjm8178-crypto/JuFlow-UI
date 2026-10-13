@@ -1,4 +1,4 @@
-"""JuFlow local admin prototype + cashier sales receiver. Python stdlib only."""
+"""Juki local admin prototype + cashier sales receiver. Python stdlib only."""
 import argparse, calendar, hashlib, hmac, json, mimetypes, os, secrets, sqlite3
 import auth
 from contextlib import closing
@@ -117,6 +117,6 @@ if __name__=='__main__':
  TOKEN=tokenfile.read_text().strip()
  with closing(connect()) as c, c:pass
  auth.init_auth()
- print(f'JuFlow admin: http://localhost:{args.port}',flush=True)
+ print(f'Juki admin: http://localhost:{args.port}',flush=True)
  print('Local prototype only. Cashier token is in .cashier-token. Do not expose publicly without admin login and HTTPS.',flush=True)
  ThreadingHTTPServer(('127.0.0.1',args.port),Handler).serve_forever()

@@ -1,4 +1,4 @@
-// JuFlow Mobile Apps - Network Manager
+// Juki Mobile Apps - Network Manager
 // Handles API calls with offline queuing, retry logic, and conflict detection
 
 (function(window) {

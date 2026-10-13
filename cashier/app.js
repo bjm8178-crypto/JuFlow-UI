@@ -1,4 +1,4 @@
-/* JuFlow Cashier — core
+/* Juki Cashier — core
  * State, API client, auth, offline outbox + ledger (IndexedDB), UI helpers and the hash router.
  * Screens (pos.js, orders.js, new-order.js, today.js, me.js) register themselves on window.JuFlowCashier.
  */
@@ -337,7 +337,7 @@
         if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
       });
       $('header-title').textContent = def.title;
-      $('header-subtitle').textContent = typeof def.subtitle === 'function' ? def.subtitle() : (def.subtitle || 'JuFlow');
+      $('header-subtitle').textContent = typeof def.subtitle === 'function' ? def.subtitle() : (def.subtitle || 'Juki');
 
       const main = $('app-main');
       main.scrollTop = 0;
@@ -386,7 +386,7 @@
       const mine = await outbox.mine().catch(() => []);
       const message = mine.length
         ? mine.length + (mine.length === 1 ? ' sale is' : ' sales are') + ' still waiting to send. They stay on this phone and send after you sign in again. Sign out now?'
-        : 'Sign out of JuFlow Cashier?';
+        : 'Sign out of Juki Cashier?';
       const ok = await ui.confirm({ title: 'Sign out', message, confirmText: 'Sign out', danger: true });
       if (!ok) return false;
       try { await api.post('/auth/logout', {}); } catch { /* the cookie is cleared server-side when reachable */ }
@@ -423,7 +423,7 @@
 
   function enterApp() {
     show('app');
-    $('header-subtitle').textContent = state.user.full_name || state.user.username || 'JuFlow';
+    $('header-subtitle').textContent = state.user.full_name || state.user.username || 'Juki';
     refreshStatus();
     router.go(location.hash);
     flush();

@@ -1,4 +1,4 @@
-# JuFlow API Contract & Specifications
+# Juki API Contract & Specifications
 
 Version: 1.0.0  
 Date: October 2026  

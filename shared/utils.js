@@ -1,4 +1,4 @@
-// JuFlow Mobile Apps - Shared Utilities
+// Juki Mobile Apps - Shared Utilities
 // Common functions and helpers for both Cashier and Rider apps
 
 (function(window) {

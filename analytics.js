@@ -34,7 +34,7 @@
           <button type="button" data-range="today">Today</button>
           <button type="button" data-range="7">Last 7 days</button>
           <button type="button" data-range="month">This month</button>
-          <button type="button" data-range="clear">All dates</button>
+          <button type="button" data-range="clear">Clear dates</button>
         </div>
       </div>
       <label class="field"><span>Data</span><select id="report-test"><option value="false">Real sales</option><option value="true">Test sales</option><option value="all">All sales</option></select></label>

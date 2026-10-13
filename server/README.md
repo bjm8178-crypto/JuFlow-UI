@@ -1,8 +1,8 @@
-# JuFlow Admin Backend API
+# Juki Admin Backend API
 
 **Ju Kitchen Operations Management System — Node.js + Express + MongoDB**
 
-Complete backend API for JuFlow Kitchen Operations.
+Complete backend API for Juki Kitchen Operations.
 
 ---
 

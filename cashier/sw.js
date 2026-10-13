@@ -1,7 +1,7 @@
-// JuFlow Cashier App - Service Worker
+// Juki Cashier App - Service Worker
 // Offline-first caching strategy for PWA
 
-const CACHE_VERSION = 'v5-fee-null-fix';
+const CACHE_VERSION = 'v6-juki';
 const CACHE_NAME = `juflow-cashier-${CACHE_VERSION}`;
 
 // Files to precache (app shell)
@@ -212,7 +212,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'JuFlow Cashier', options)
+    self.registration.showNotification(data.title || 'Juki Cashier', options)
   );
 });
 

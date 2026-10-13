@@ -191,7 +191,7 @@ async function startServer() {
     await bootstrap(db);
 
     const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log('\n🚀 JuFlow API Server');
+      console.log('\n🚀 Juki API Server');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`   Database: MongoDB`);

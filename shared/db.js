@@ -1,4 +1,4 @@
-// JuFlow Mobile Apps - IndexedDB Wrapper
+// Juki Mobile Apps - IndexedDB Wrapper
 // Simplified IndexedDB operations for outbox queuing
 
 (function(window) {

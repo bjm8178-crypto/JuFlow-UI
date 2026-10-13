@@ -1,4 +1,4 @@
-// JuFlow API client: browser-managed HttpOnly cookie sessions.
+// Juki API client: browser-managed HttpOnly cookie sessions.
 const JuAPI = (() => {
   const API_URL = '/api';
 

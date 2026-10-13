@@ -1,4 +1,4 @@
-# JuFlow Admin Backend — Phase 0 Complete ✅
+# Juki Admin Backend — Phase 0 Complete ✅
 
 **Project:** Ju Kitchen Capstone — Kitchen Operations Management System  
 **Student:** [Your Name]  
@@ -9,7 +9,7 @@
 
 ## 🎉 What We Just Built
 
-You now have a **production-ready database architecture** and **scaffolded Node.js backend** for your JuFlow Admin system. This represents **Week 1** of your 12-week implementation plan.
+You now have a **production-ready database architecture** and **scaffolded Node.js backend** for your Juki Admin system. This represents **Week 1** of your 12-week implementation plan.
 
 ---
 
@@ -218,7 +218,7 @@ curl http://localhost:3000/api/health
 - **pgAdmin** or **psql** (database inspection)
 
 ### Test Workflow
-1. **Create Postman collection:** "JuFlow API v1"
+1. **Create Postman collection:** "Juki API v1"
 2. **Add environment variables:** 
    - `base_url`: `http://localhost:3000`
    - `auth_token`: (saved after login)
@@ -339,7 +339,7 @@ WHERE quantity_on_hand <= reorder_level
 | **README.md** | Complete API documentation, troubleshooting |
 | **SETUP_CHECKLIST.md** | Step-by-step setup instructions |
 | **THIS FILE** | Phase 0 summary and handoff |
-| **JuFlow Admin Completion Plan.md** | Original 12-week roadmap (in parent directory) |
+| **Juki Admin Completion Plan.md** | Original 12-week roadmap (in parent directory) |
 
 ---
 

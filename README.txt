@@ -1,6 +1,6 @@
 DEPLOYMENT: see DEPLOYMENT.md (MongoDB Atlas + Render API + Vercel frontend). The Python server below is the old local prototype.
 
-JuFlow — Admin website, customer landmarks and live sales receiver
+Juki — Admin website, customer landmarks and live sales receiver
 
 START
 1. Extract the ZIP.

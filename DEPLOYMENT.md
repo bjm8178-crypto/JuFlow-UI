@@ -1,4 +1,4 @@
-# Deploying JuFlow: MongoDB Atlas + Render + Vercel
+# Deploying Juki: MongoDB Atlas + Render + Vercel
 
 ```
 Browser ──► Vercel (static pages from dist/)

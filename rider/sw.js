@@ -1,7 +1,7 @@
-// JuFlow Rider App - Service Worker
+// Juki Rider App - Service Worker
 // Offline-first caching strategy for PWA
 
-const CACHE_VERSION = 'v4-pin-file';
+const CACHE_VERSION = 'v6-juki';
 const CACHE_NAME = `juflow-rider-${CACHE_VERSION}`;
 
 // Files to precache (app shell)
@@ -220,7 +220,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'JuFlow Rider', options)
+    self.registration.showNotification(data.title || 'Juki Rider', options)
   );
 });
 

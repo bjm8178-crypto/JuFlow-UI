@@ -1,4 +1,4 @@
-# 🎉 JuFlow Architecture & Backend Foundation Summary
+# 🎉 Juki Architecture & Backend Foundation Summary
 
 **Ju Kitchen Operations Management System**  
 **Stack:** Node.js (Express) + MongoDB & Python Admin Server (SQLite)
@@ -7,7 +7,7 @@
 
 ## 📦 System Architecture
 
-The JuFlow system provides complete kitchen and operations management for Ju Kitchen in Saog, Marilao, Bulacan:
+The Juki system provides complete kitchen and operations management for Ju Kitchen in Saog, Marilao, Bulacan:
 
 ```
 server/                                  ← REST API BACKEND (Node.js + MongoDB)

@@ -1,7 +1,7 @@
 {
   "name": "juflow-frontend",
   "version": "1.0.0",
-  "description": "JuFlow Frontend Static Server",
+  "description": "Juki Frontend Static Server",
   "main": "serve.js",
   "scripts": {
     "start": "node serve.js",

@@ -1,7 +1,7 @@
 {
   "name": "juflow-server",
   "version": "1.0.0",
-  "description": "JuFlow Kitchen Operations Backend API",
+  "description": "Juki Kitchen Operations Backend API",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

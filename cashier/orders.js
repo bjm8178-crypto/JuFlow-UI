@@ -1,4 +1,4 @@
-/* JuFlow Cashier — Orders
+/* Juki Cashier — Orders
  * Delivery orders with three statuses only: Preparing -> On the way -> Delivered.
  * The cashier sets the status (the admin sees it live) and can see the customer's address.
  * Uses GET /api/orders and POST /api/orders/:id/status.

@@ -1,6 +1,6 @@
 # ✅ Phase 1 Complete — Authentication & Foundation
 
-**JuFlow Admin Backend — Completed October 6, 2026 01:20 UTC**
+**Juki Admin Backend — Completed October 6, 2026 01:20 UTC**
 
 ---
 
@@ -284,7 +284,7 @@ npm start
 
 **Expected output:**
 ```
-🚀 JuFlow API Server
+🚀 Juki API Server
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    Environment: development
    Port: 3000

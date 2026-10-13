@@ -1,4 +1,4 @@
-/* JuFlow Cashier — Sell
+/* Juki Cashier — Sell
  * Today's dishes (picked by the admin). Each dish has a + and a − button:
  *   +  records one sale right away  -> shows up in the admin's analytics and notifications
  *   −  undoes the latest sale of that dish today (returned food / cancelled delivery)

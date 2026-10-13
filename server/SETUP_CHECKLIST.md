@@ -1,9 +1,9 @@
-# JuFlow Setup Checklist
+# Juki Setup Checklist
 
 **Date:** October 6, 2026  
 **Phase:** 0 → 1 Transition
 
-Complete these steps to get your JuFlow Admin backend running.
+Complete these steps to get your Juki Admin backend running.
 
 ---
 
@@ -182,7 +182,7 @@ npm run dev
 **Expected output:**
 
 ```
-🚀 JuFlow API Server
+🚀 Juki API Server
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    Environment: development
    Port: 3000
@@ -294,7 +294,7 @@ curl http://localhost:3000/api/health
 ### Testing Strategy
 
 1. Install Postman or Thunder Client (VS Code extension)
-2. Create a collection: "JuFlow API"
+2. Create a collection: "Juki API"
 3. Add requests for each endpoint
 4. Test happy path (valid data)
 5. Test error cases (invalid auth, missing fields, etc.)

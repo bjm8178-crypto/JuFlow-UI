@@ -12,7 +12,7 @@ function filter(req, start, end) {
   if (!['true', 'false', 'all'].includes(test)) throw Object.assign(new Error('is_test must be true, false or all'), { status: 400 });
   const source = req.query.source;
   if (source && !['order', 'walk_in', 'device', 'refund'].includes(source)) throw Object.assign(new Error('Invalid source'), { status: 400 });
-  return { sale_time: { $gte: start, $lt: end }, voided_at: null, ...(test === 'all' ? {} : { is_test_sale: test === 'true' }), ...(source ? { source } : {}) };
+  return { sale_time: { $gte: start, $lt: end }, voided_at: null, ...(test === 'all' ? {} : { is_test_sale: test === 'true' ? true : { $ne: true } }), ...(source ? { source } : {}) };
 }
 router.get('/', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
@@ -73,7 +73,7 @@ export function createCountsSalesHandler({ database = getDb, clock = () => new D
     try {
       const now = clock(), { start, end } = reportRange({}, now);
       const rows = await database().collection('sales').aggregate([
-        { $match: { sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: false } },
+        { $match: { sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true } } },
         { $unwind: '$items' },
         { $match: { 'items.product_id': { $ne: null } } },
         { $group: { _id: { $toString: '$items.product_id' }, quantity: { $sum: '$items.quantity' } } }
@@ -93,7 +93,7 @@ export function createSinceSalesHandler({ database = getDb, clock = () => new Da
       if (!Number.isFinite(after.getTime())) throw orderError('after must be a valid date');
       const from = new Date(Math.max(now.getTime() - 86400000, after.getTime() - 10000));
       const items = await database().collection('sales').find(
-        { received_at: { $gt: from }, voided_at: null, is_test_sale: false },
+        { received_at: { $gt: from }, voided_at: null, is_test_sale: { $ne: true } },
         { projection: { items: 1, total_centavos: 1, payment_method: 1, received_at: 1 } }
       ).sort({ received_at: 1, _id: 1 }).limit(50).toArray();
       res.json({ cursor: items.length === 50 ? new Date(items.at(-1).received_at).toISOString() : now.toISOString(), items });
@@ -167,7 +167,7 @@ export function createUntapSaleHandler({ database = getDb, transaction = withTra
           const existing = await db.collection('sales').findOne({ void_id: keyId }, { session });
           if (existing) return replay(existing);
           const sale = await db.collection('sales').findOneAndUpdate(
-            { sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: false, tap: true, source: 'walk_in',
+            { sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true }, tap: true, source: 'walk_in',
               'items.product_id': { $in: [productId, String(productId)] } },
             { $set: { voided_at: now, voided_by: toObjectId(req.user.id), void_id: keyId, ...updateTimestamp(), updated_at: now } },
             { session, sort: { sale_time: -1, _id: -1 }, returnDocument: 'after' }
@@ -193,7 +193,7 @@ router.get('/today/list', authenticate, requireRole('admin', 'cashier'), async (
   try {
     const { start, end } = reportRange({}, new Date());
     const rows = await getDb().collection('sales')
-      .find({ sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: false })
+      .find({ sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true } })
       .sort({ sale_time: -1, _id: -1 }).limit(200).toArray();
     res.json(rows.map(({ digest, ...sale }) => sale));
   } catch (error) { next(error); }
@@ -216,81 +216,62 @@ export function validateRefund(body) {
 }
 
 // Return food and/or the delivery fee. Stored as a NEGATIVE sale row so every report nets out by itself.
-export function createRefundSaleHandler({ database = getDb, transaction = withTransaction,
-  clock = () => new Date(), notifier = notifySale } = {}) {
-  return async (req, res, next) => {
-    try {
-      const saleId = toObjectId(req.params.id);
-      if (!saleId) return res.status(400).json({ error: 'invalid_id', message: 'Invalid sale id' });
-      const input = validateRefund(req.body);
-      const now = clock();
-      const transaction_id = `refund:${saleId}:${input.event_id}`;
+router.post('/:id/refund', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
+  try {
+    const saleId = toObjectId(req.params.id);
+    if (!saleId) return res.status(400).json({ error: 'invalid_id', message: 'Invalid sale id' });
+    const input = validateRefund(req.body);
+    const db = getDb(), now = new Date();
+    const transaction_id = `refund:${saleId}:${input.event_id}`;
+    const replay = await db.collection('sales').findOne({ transaction_id });
+    if (replay) return res.status(200).json({ ...replay, duplicate: true });
 
-      // All checks and writes share a transaction. Touching the original sale
-      // serializes competing refunds, preventing the same units being returned twice.
-      const perform = async (db, session) => {
-        const collection = db.collection('sales');
-        const opts = { session };
-        const replay = await collection.findOne({ transaction_id }, opts);
-        if (replay) return { sale: replay, duplicate: true };
-        const sale = await collection.findOne({ _id: saleId }, opts);
-        if (!sale || sale.source === 'refund') throw Object.assign(new Error('Sale not found'), { status: 404, code: 'not_found' });
-        if (req.user.role_name === 'cashier' && sale.sale_time < reportRange({}, now).start) {
-          throw Object.assign(new Error("Only today's sales can be changed. Ask the admin."), { status: 403, code: 'too_old' });
-        }
-        const previous = await collection.find({ refund_of: saleId }, opts).toArray();
-        const returned = new Map();
-        for (const prior of previous) for (const line of prior.refund_lines || []) {
-          returned.set(line.index, (returned.get(line.index) || 0) + line.quantity);
-        }
-        const lines = input.items.map(({ index, quantity }) => {
-          const item = sale.items[index];
-          if (!item) throw Object.assign(new Error('Unknown item'), { status: 400, code: 'validation_error' });
-          const left = item.quantity - (returned.get(index) || 0);
-          if (quantity > left) throw Object.assign(new Error(`Only ${left} left to return for ${item.name}`), { status: 409, code: 'over_refund' });
-          return { index, quantity, item };
-        });
-        if (input.refund_fee) {
-          if (!sale.fee_centavos) throw Object.assign(new Error('This sale has no delivery fee'), { status: 400, code: 'validation_error' });
-          if (previous.some(prior => prior.refund_fee)) throw Object.assign(new Error('Delivery fee was already returned'), { status: 409, code: 'over_refund' });
-        }
-        const food = lines.reduce((sum, line) => sum + line.quantity * line.item.price_centavos, 0);
-        const fee = input.refund_fee ? sale.fee_centavos : 0;
-        const refund = {
-          transaction_id, source: 'refund', refund_of: saleId, reason: input.reason, refund_fee: input.refund_fee,
-          refund_lines: lines.map(({ index, quantity }) => ({ index, quantity })),
-          items: lines.map(({ quantity, item }) => ({ name: item.name, quantity: -quantity,
-            price_centavos: item.price_centavos, ...(item.product_id ? { product_id: item.product_id } : {}) })),
-          food_centavos: -food, fee_centavos: -fee, total_centavos: -(food + fee),
-          payment_method: sale.payment_method, cash_tendered_centavos: null, gcash_reference: null,
-          order_id: null, is_test_sale: sale.is_test_sale === true, voided_at: null,
-          occurred_at: now, sale_time: now, received_at: now, ...timestamps(),
-          recorded_by: toObjectId(req.user.id), recorded_actor: req.user.id, recorded_role: req.user.role_name
-        };
-        await collection.updateOne({ _id: saleId }, {
-          $inc: { refund_version: 1 },
-          $set: { has_refunds: true, updated_at: now }
-        }, opts);
-        const { insertedId } = await collection.insertOne(refund, opts);
-        return { sale: { ...refund, _id: insertedId }, duplicate: false };
-      };
-      let result;
-      try {
-        result = await transaction(perform);
-      } catch (error) {
-        if (error.code !== 11000) throw error;
-        const winner = await database().collection('sales').findOne({ transaction_id });
-        if (!winner) throw error;
-        result = { sale: winner, duplicate: true };
+    const sale = await db.collection('sales').findOne({ _id: saleId });
+    if (!sale || sale.source === 'refund') return res.status(404).json({ error: 'not_found', message: 'Sale not found' });
+    if (req.user.role_name === 'cashier' && sale.sale_time < reportRange({}, now).start) {
+      return res.status(403).json({ error: 'too_old', message: "Only today's sales can be changed. Ask the admin." });
+    }
+    const previous = await db.collection('sales').find({ refund_of: saleId }).toArray();
+    const returned = new Map();
+    for (const r of previous) for (const line of r.refund_lines || []) returned.set(line.index, (returned.get(line.index) || 0) + line.quantity);
+
+    const lines = input.items.map(({ index, quantity }) => {
+      const item = sale.items[index];
+      if (!item) throw Object.assign(new Error('Unknown item'), { status: 400, code: 'validation_error' });
+      const left = item.quantity - (returned.get(index) || 0);
+      if (quantity > left) throw Object.assign(new Error(`Only ${left} left to return for ${item.name}`), { status: 409, code: 'over_refund' });
+      return { index, quantity, item };
+    });
+    if (input.refund_fee) {
+      if (!sale.fee_centavos) throw Object.assign(new Error('This sale has no delivery fee'), { status: 400, code: 'validation_error' });
+      if (previous.some(r => r.refund_fee)) throw Object.assign(new Error('Delivery fee was already returned'), { status: 409, code: 'over_refund' });
+    }
+    const food = lines.reduce((sum, l) => sum + l.quantity * l.item.price_centavos, 0);
+    const fee = input.refund_fee ? sale.fee_centavos : 0;
+    const refund = {
+      transaction_id, source: 'refund', refund_of: saleId, reason: input.reason, refund_fee: input.refund_fee,
+      refund_lines: lines.map(({ index, quantity }) => ({ index, quantity })),
+      items: lines.map(({ quantity, item }) => ({ name: item.name, quantity: -quantity, price_centavos: item.price_centavos, ...(item.product_id ? { product_id: item.product_id } : {}) })),
+      food_centavos: -food, fee_centavos: -fee, total_centavos: -(food + fee),
+      payment_method: sale.payment_method, cash_tendered_centavos: null, gcash_reference: null,
+      order_id: null, is_test_sale: sale.is_test_sale === true, voided_at: null,
+      occurred_at: now, sale_time: now, received_at: now, ...timestamps(),
+      recorded_by: toObjectId(req.user.id), recorded_actor: req.user.id, recorded_role: req.user.role_name
+    };
+    try {
+      const { insertedId } = await db.collection('sales').insertOne(refund);
+      const saved = { ...refund, _id: insertedId };
+      try { await notifySale(db, saved); } catch (error) { console.error('Notification failed:', error.message); }
+      res.status(201).json(saved);
+    } catch (error) {
+      if (error.code === 11000) {
+        const winner = await db.collection('sales').findOne({ transaction_id });
+        if (winner) return res.status(200).json({ ...winner, duplicate: true });
       }
-      if (!result.duplicate) {
-        try { await notifier(database(), result.sale); } catch (error) { console.error('Notification failed:', error.message); }
-      }
-      return res.status(result.duplicate ? 200 : 201).json(result.duplicate ? { ...result.sale, duplicate: true } : result.sale);
-    } catch (error) { next(error); }
-  };
-}
-router.post('/:id/refund', authenticate, requireRole('admin', 'cashier'), createRefundSaleHandler());
+      throw error;
+    }
+  } catch (error) { next(error); }
+});
 
 router.get('/:id', authenticate, requireRole('admin'), async (req, res, next) => {
   try {

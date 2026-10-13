@@ -1,4 +1,4 @@
-# JuFlow Cashier & Rider Apps: Implementation Plan
+# Juki Cashier & Rider Apps: Implementation Plan
 
 **Written:** 2026-10-12
 **Basis:** I read the code (frontend, `server/`, `vercel.json`, `render.yaml`, build script, tests, docs). Nothing was run. Where I say "bug" or "gap" it is from reading, so verify before fixing.
@@ -8,7 +8,7 @@
 
 ## 1. The idea in one paragraph
 
-You do not need to build a native app. Make the two existing web screens (cashier, rider) into **installable PWAs**, then wrap each one in a **Trusted Web Activity (TWA)**: a real, signed `.apk` that opens your Vercel site full-screen with no browser bar. It has its own icon, splash screen and app name, looks like an app, and updates whenever you deploy the website (no re-install). Two APKs: `JuFlow Cashier` and `JuFlow Rider`.
+You do not need to build a native app. Make the two existing web screens (cashier, rider) into **installable PWAs**, then wrap each one in a **Trusted Web Activity (TWA)**: a real, signed `.apk` that opens your Vercel site full-screen with no browser bar. It has its own icon, splash screen and app name, looks like an app, and updates whenever you deploy the website (no re-install). Two APKs: `Juki Cashier` and `Juki Rider`.
 
 Roughly 80% of the work is making the web pages behave like apps (offline shell, instant start, in-scope login, push alerts). The APK step itself is about a day.
 

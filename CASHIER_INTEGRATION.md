@@ -1,4 +1,4 @@
-# JuFlow cashier sales contract
+# Juki cashier sales contract
 
 The cashier app is a separate future project. This package implements the admin
 website and a Python/SQLite receiver for completed cashier transactions.

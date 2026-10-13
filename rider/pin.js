@@ -1,4 +1,4 @@
-// JuFlow Rider App - Customer pin file
+// Juki Rider App - Customer pin file
 // First delivery to a new customer: stand at the door, capture the GPS position, and save a small
 // file. The admin uploads that file on the Customers page to save the pin on the customer.
 

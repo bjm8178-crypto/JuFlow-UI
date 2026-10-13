@@ -78,7 +78,7 @@ async function createFrontendServer({ root = __dirname, apiPort = 3000 } = {}) {
 if (require.main === module) {
   createFrontendServer().then((server) => {
     server.listen(8080, '127.0.0.1', () => {
-      console.log('JuFlow frontend: http://127.0.0.1:8080/login.html');
+      console.log('Juki frontend: http://127.0.0.1:8080/login.html');
       console.log('Local /api proxy: http://localhost:3000');
     });
   }).catch((error) => { console.error(error); process.exitCode = 1; });

@@ -1,8 +1,8 @@
-# JuFlow Server - MongoDB Setup Guide
+# Juki Server - MongoDB Setup Guide
 
 ## ✅ MongoDB Successfully Converted!
 
-Your JuFlow backend has been **completely converted from PostgreSQL to MongoDB**. All routes, authentication, and database operations now use MongoDB.
+Your Juki backend has been **completely converted from PostgreSQL to MongoDB**. All routes, authentication, and database operations now use MongoDB.
 
 ---
 
@@ -103,7 +103,7 @@ You should see:
    Database: juflow
 ✅ Database indexes created
 
-🚀 JuFlow API Server
+🚀 Juki API Server
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    Environment: development
    Database: MongoDB
@@ -291,7 +291,7 @@ npm test          # Run tests (when added)
 
 ---
 
-## ✨ MongoDB Benefits for JuFlow
+## ✨ MongoDB Benefits for Juki
 
 1. **Flexible Schema** - Easy to add new fields without migrations
 2. **JSON-Native** - Perfect for JavaScript/Node.js apps
@@ -302,4 +302,4 @@ npm test          # Run tests (when added)
 
 ---
 
-**🎉 Congratulations! Your JuFlow backend is now running on MongoDB.**
+**🎉 Congratulations! Your Juki backend is now running on MongoDB.**
