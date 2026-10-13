@@ -333,3 +333,13 @@ test('JuKi branding appears in all standalone app entrypoints without changing t
     assert.ok(manifest.name.startsWith('JuKi '), app + ' manifest has JuKi app name');
   }
 });
+
+test('dish editor cancel control cannot shadow the form reset method', async () => {
+  const html = await readFile(path.join(projectRoot, 'dishes.html'), 'utf8');
+  const form = html.match(/<form\b[^>]*id="f"[^>]*>([\s\S]*?)<\/form>/);
+  assert.ok(form, 'dish editor form exists');
+  assert.doesNotMatch(form[1], /\b(?:id|name)="reset"/, 'form controls must not shadow HTMLFormElement.reset');
+  assert.match(form[1], /id="cancel-edit"/);
+  assert.match(html, /function resetForm\(\)\{\$\('f'\)\.reset\(\)/);
+  assert.match(html, /\$\('cancel-edit'\)\.onclick=/);
+});
