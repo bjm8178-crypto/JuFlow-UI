@@ -70,6 +70,15 @@ router.post('/', authenticate, requireRole('admin', 'cashier'), async (req, res,
     const updates = validateCustomer(req.body);
 
     const db = getDb();
+    // Same phone number already on an active customer? Stop duplicates (a shared number can be forced with ?allow_duplicate=1).
+    const digits = String(updates.phone || '').replace(/\D/g, '');
+    if (digits.length >= 7 && req.query.allow_duplicate !== '1') {
+      const same = await db.collection('customers').findOne({
+        is_active: { $ne: false },
+        phone: { $regex: new RegExp('^\\D*' + digits.split('').join('\\D*') + '\\D*$') }
+      });
+      if (same) return res.status(409).json({ error: 'duplicate_customer', message: `This phone number is already saved for ${same.name}.`, customer_id: String(same._id) });
+    }
     const result = await db.collection('customers').insertOne({
       ...updates,
       ...timestamps()

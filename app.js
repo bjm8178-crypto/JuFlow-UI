@@ -8,7 +8,7 @@ function showDemoNotice(message) {
   toastTimer = setTimeout(() => toast.classList.remove('visible'), 3500);
 }
 document.querySelectorAll('[data-demo]:not([aria-label="Notifications"])').forEach(button => {
-  button.addEventListener('click', () => showDemoNotice('This feature is part of the UI preview and is not connected yet.'));
+  button.addEventListener('click', () => showDemoNotice('This feature isn't available yet.'));
 });
 document.querySelectorAll('[data-password]').forEach(button => {
   button.addEventListener('click', () => {

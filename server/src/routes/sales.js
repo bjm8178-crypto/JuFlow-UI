@@ -214,62 +214,72 @@ export function validateRefund(body) {
 }
 
 // Return food and/or the delivery fee. Stored as a NEGATIVE sale row so every report nets out by itself.
-router.post('/:id/refund', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
-  try {
-    const saleId = toObjectId(req.params.id);
-    if (!saleId) return res.status(400).json({ error: 'invalid_id', message: 'Invalid sale id' });
-    const input = validateRefund(req.body);
-    const db = getDb(), now = new Date();
-    const transaction_id = `refund:${saleId}:${input.event_id}`;
-    const replay = await db.collection('sales').findOne({ transaction_id });
-    if (replay) return res.status(200).json({ ...replay, duplicate: true });
-
-    const sale = await db.collection('sales').findOne({ _id: saleId });
-    if (!sale || sale.source === 'refund') return res.status(404).json({ error: 'not_found', message: 'Sale not found' });
-    if (req.user.role_name === 'cashier' && sale.sale_time < reportRange({}, now).start) {
-      return res.status(403).json({ error: 'too_old', message: "Only today's sales can be changed. Ask the admin." });
-    }
-    const previous = await db.collection('sales').find({ refund_of: saleId }).toArray();
-    const returned = new Map();
-    for (const r of previous) for (const line of r.refund_lines || []) returned.set(line.index, (returned.get(line.index) || 0) + line.quantity);
-
-    const lines = input.items.map(({ index, quantity }) => {
-      const item = sale.items[index];
-      if (!item) throw Object.assign(new Error('Unknown item'), { status: 400, code: 'validation_error' });
-      const left = item.quantity - (returned.get(index) || 0);
-      if (quantity > left) throw Object.assign(new Error(`Only ${left} left to return for ${item.name}`), { status: 409, code: 'over_refund' });
-      return { index, quantity, item };
-    });
-    if (input.refund_fee) {
-      if (!sale.fee_centavos) throw Object.assign(new Error('This sale has no delivery fee'), { status: 400, code: 'validation_error' });
-      if (previous.some(r => r.refund_fee)) throw Object.assign(new Error('Delivery fee was already returned'), { status: 409, code: 'over_refund' });
-    }
-    const food = lines.reduce((sum, l) => sum + l.quantity * l.item.price_centavos, 0);
-    const fee = input.refund_fee ? sale.fee_centavos : 0;
-    const refund = {
-      transaction_id, source: 'refund', refund_of: saleId, reason: input.reason, refund_fee: input.refund_fee,
-      refund_lines: lines.map(({ index, quantity }) => ({ index, quantity })),
-      items: lines.map(({ quantity, item }) => ({ name: item.name, quantity: -quantity, price_centavos: item.price_centavos, ...(item.product_id ? { product_id: item.product_id } : {}) })),
-      food_centavos: -food, fee_centavos: -fee, total_centavos: -(food + fee),
-      payment_method: sale.payment_method, cash_tendered_centavos: null, gcash_reference: null,
-      order_id: null, is_test_sale: false, voided_at: null,
-      occurred_at: now, sale_time: now, received_at: now, ...timestamps(),
-      recorded_by: toObjectId(req.user.id), recorded_actor: req.user.id, recorded_role: req.user.role_name
-    };
+// Runs in a transaction and touches the source sale (refund_version), so two simultaneous refunds
+// of the same sale conflict and retry instead of both passing the "left to return" check.
+export function createRefundSaleHandler({ database = getDb, transaction = withTransaction, clock = () => new Date(), notifier = notifySale } = {}) {
+  return async (req, res, next) => {
     try {
-      const { insertedId } = await db.collection('sales').insertOne(refund);
-      const saved = { ...refund, _id: insertedId };
-      try { await notifySale(db, saved); } catch (error) { console.error('Notification failed:', error.message); }
-      res.status(201).json(saved);
-    } catch (error) {
-      if (error.code === 11000) {
-        const winner = await db.collection('sales').findOne({ transaction_id });
-        if (winner) return res.status(200).json({ ...winner, duplicate: true });
+      const saleId = toObjectId(req.params.id);
+      if (!saleId) return res.status(400).json({ error: 'invalid_id', message: 'Invalid sale id' });
+      const input = validateRefund(req.body);
+      const now = clock();
+      const transaction_id = `refund:${saleId}:${input.event_id}`;
+      let outcome;
+      try {
+        outcome = await transaction(async (db, session) => {
+          const sales = db.collection('sales');
+          const replay = await sales.findOne({ transaction_id }, { session });
+          if (replay) return { saved: replay, duplicate: true };
+          const sale = await sales.findOne({ _id: saleId }, { session });
+          if (!sale || sale.source === 'refund') throw Object.assign(new Error('Sale not found'), { status: 404, code: 'not_found' });
+          if (req.user.role_name === 'cashier' && sale.sale_time < reportRange({}, now).start) {
+            throw Object.assign(new Error("Only today's sales can be changed. Ask the admin."), { status: 403, code: 'too_old' });
+          }
+          const previous = await sales.find({ refund_of: saleId }, { session }).toArray();
+          const returned = new Map();
+          for (const r of previous) for (const line of r.refund_lines || []) returned.set(line.index, (returned.get(line.index) || 0) + line.quantity);
+          const lines = input.items.map(({ index, quantity }) => {
+            const item = sale.items[index];
+            if (!item) throw Object.assign(new Error('Unknown item'), { status: 400, code: 'validation_error' });
+            const left = item.quantity - (returned.get(index) || 0);
+            if (quantity > left) throw Object.assign(new Error(`Only ${left} left to return for ${item.name}`), { status: 409, code: 'over_refund' });
+            return { index, quantity, item };
+          });
+          if (input.refund_fee) {
+            if (!sale.fee_centavos) throw Object.assign(new Error('This sale has no delivery fee'), { status: 400, code: 'validation_error' });
+            if (previous.some(r => r.refund_fee)) throw Object.assign(new Error('Delivery fee was already returned'), { status: 409, code: 'over_refund' });
+          }
+          const food = lines.reduce((sum, l) => sum + l.quantity * l.item.price_centavos, 0);
+          const fee = input.refund_fee ? sale.fee_centavos : 0;
+          const refund = {
+            transaction_id, source: 'refund', refund_of: saleId, reason: input.reason, refund_fee: input.refund_fee,
+            refund_lines: lines.map(({ index, quantity }) => ({ index, quantity })),
+            items: lines.map(({ quantity, item }) => ({ name: item.name, quantity: -quantity, price_centavos: item.price_centavos, ...(item.product_id ? { product_id: item.product_id } : {}) })),
+            food_centavos: -food, fee_centavos: -fee, total_centavos: -(food + fee),
+            payment_method: sale.payment_method, cash_tendered_centavos: null, gcash_reference: null,
+            order_id: null, is_test_sale: false, voided_at: null,
+            occurred_at: now, sale_time: now, received_at: now, ...timestamps(),
+            recorded_by: toObjectId(req.user.id), recorded_actor: req.user.id, recorded_role: req.user.role_name
+          };
+          const { insertedId } = await sales.insertOne(refund, { session });
+          // Touch the source sale so concurrent refunds of it conflict.
+          await sales.updateOne({ _id: saleId }, { $set: { has_refunds: true }, $inc: { refund_version: 1 } }, { session });
+          return { saved: { ...refund, _id: insertedId }, duplicate: false };
+        });
+      } catch (error) {
+        if (error.code === 11000) {
+          const winner = await database().collection('sales').findOne({ transaction_id });
+          if (winner) return res.status(200).json({ ...winner, duplicate: true });
+        }
+        throw error;
       }
-      throw error;
-    }
-  } catch (error) { next(error); }
-});
+      if (outcome.duplicate) return res.status(200).json({ ...outcome.saved, duplicate: true });
+      try { await notifier(database(), outcome.saved); } catch (error) { console.error('Notification failed:', error.message); }
+      res.status(201).json(outcome.saved);
+    } catch (error) { next(error); }
+  };
+}
+router.post('/:id/refund', authenticate, requireRole('admin', 'cashier'), createRefundSaleHandler());
 
 router.get('/:id', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
