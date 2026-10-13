@@ -2,7 +2,7 @@ import { shape, text, coordinate, invalid } from './customer.js';
 
 const strings = { shop_name: 200, shop_phone: 40, business_name: 200, business_phone: 40, business_address: 1000 };
 const coordinates = { shop_lat: 90, shop_lng: 180, shop_latitude: 90, shop_longitude: 180 };
-const keys = [...Object.keys(strings), ...Object.keys(coordinates), 'payment_methods', 'business_timezone', 'timezone', 'tax_rate', 'test_mode', 'currency', 'require_gcash_proof'];
+const keys = [...Object.keys(strings), ...Object.keys(coordinates), 'payment_methods', 'business_timezone', 'timezone', 'tax_rate', 'currency', 'require_gcash_proof'];
 
 export function validateSettingKey(key) {
   if (!keys.includes(key)) invalid('Unsupported setting key');
