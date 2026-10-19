@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dishes · Juki</title>
+<title>Dishes · JuKi</title>
 <link rel="stylesheet" href="styles.css">
 <script src="/auth-guard.js"></script>
 <script src="app.js" defer></script>
 </head>
 <body class="dashboard-page">
 <aside class="sidebar" id="sidebar">
-  <a class="brand" href="index.html"><span class="brand-mark">J<span>•</span></span><span>Juki<span class="brand-sub">JU KITCHEN OPERATIONS</span></span></a>
+  <a class="brand" href="index.html"><span class="brand-mark">J<span>•</span></span><span>JuKi<span class="brand-sub">OPERATIONS</span></span></a>
   <nav aria-label="Main navigation">
     <p class="nav-heading">WORKSPACE</p>
     <a class="nav-item" href="dashboard.html"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dashboard</span></a>
@@ -24,7 +24,7 @@
   </nav>
   <div class="sidebar-bottom">
     <button class="nav-item" data-demo><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m9 3-1 3-3 1-2 4 2 2 1 4 4 2 3-1 4-1 2-4-1-3-1-4-4-2-4 1Z"/></svg> Settings</button>
-    <div class="workspace-card"><span class="workspace-dot"></span><div><strong>Ju Kitchen</strong><small>Marilao, Bulacan</small></div></div>
+    <div class="workspace-card"><span class="workspace-dot"></span><div><strong>JuKi</strong><small>Marilao, Bulacan</small></div></div>
   </div>
 </aside>
 
@@ -36,7 +36,7 @@
     </div>
     <div class="top-actions">
       <span class="avatar">AD</span>
-      <div class="profile"><strong>Administrator</strong><small>Ju Kitchen</small></div>
+      <div class="profile"><strong>Administrator</strong><small>JuKi</small></div>
       <a class="icon-button logout" href="/login.html" onclick="event.preventDefault(); juflowLogout()" aria-label="Logout"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 4H4v16h6m3-12 4 4-4 4m-5-4h13"/></svg></a>
     </div>
   </header>
@@ -78,13 +78,20 @@
       <button type="button" class="primary" data-save-menu>Save today’s menu</button>
     </div>
     <div id="list" class="panel list-panel"></div>
+    <div class="table-pager" id="dishes-pager" style="margin: 12px 0 16px;">
+      <span id="dishes-page-info" role="status">Page 1 of 1</span>
+      <div class="pager-buttons">
+        <button id="dishes-prev" type="button" class="pager-btn-nav">&lt; Previous Page</button>
+        <button id="dishes-next" type="button" class="pager-btn-nav">Next Page &gt;</button>
+      </div>
+    </div>
     <div class="form-actions"><button type="button" class="primary" data-save-menu>Save today’s menu</button></div>
   </main>
 </div>
 <div id="toast" role="status"></div>
 
 <script>
-const $=id=>document.getElementById(id);let dishes=[],picked=new Set();
+const $=id=>document.getElementById(id);let dishes=[],picked=new Set(),dishPage=1;const PAGE_SIZE=10;
 const api=async(u,o={})=>{const r=await fetch('/api'+u,{credentials:'same-origin',headers:{'Content-Type':'application/json'},...o});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.message||r.status);return d};
 const say=(t,err)=>{const m=$('msg');m.textContent=t;m.classList.toggle('error',!!err);if(!err&&window.showDemoNotice)showDemoNotice(t)};
 function resize(file){return new Promise((ok,no)=>{const img=new Image();img.onload=()=>{const s=Math.min(1,480/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);ok(c.toDataURL('image/webp',.8))};img.onerror=no;img.src=URL.createObjectURL(file)})}
@@ -103,8 +110,21 @@ function renderSelling(date){const L=$('selling-list');L.textContent='';
   card.append(im,info,ct);L.append(card)})}
 async function load(){dishes=await api('/products');const m=await api('/menu/today');$('today').textContent='· '+m.date;picked=new Set(m.dishes.map(d=>d._id));render();await loadSelling().catch(er=>say(er.message,true))}
 function render(){const L=$('list');L.textContent='';
- if(!dishes.length){const p=document.createElement('p');p.className='empty';p.textContent='No dishes yet. Add your first dish above.';L.append(p);return}
- dishes.forEach(d=>{const r=document.createElement('div');r.className='list-row';
+ if(!dishes.length){
+   const p=document.createElement('p');p.className='empty';p.textContent='No dishes yet. Add your first dish above.';L.append(p);
+   $('dishes-pager').hidden=true;
+   return;
+ }
+ $('dishes-pager').hidden=false;
+ const totalPages=Math.max(1,Math.ceil(dishes.length/PAGE_SIZE));
+ if(dishPage>totalPages)dishPage=totalPages;
+ if(dishPage<1)dishPage=1;
+ $('dishes-page-info').textContent=`Page ${dishPage} of ${totalPages} · ${dishes.length} dish${dishes.length===1?'':'es'}`;
+ $('dishes-prev').disabled=(dishPage<=1);
+ $('dishes-next').disabled=(dishPage>=totalPages);
+
+ const pageItems=dishes.slice((dishPage-1)*PAGE_SIZE,dishPage*PAGE_SIZE);
+ pageItems.forEach(d=>{const r=document.createElement('div');r.className='list-row';
   const im=d.photo_path?Object.assign(document.createElement('img'),{src:d.photo_path,alt:'',className:'thumb'}):Object.assign(document.createElement('div'),{className:'thumb'});
   const n=document.createElement('div');n.className='grow';
   const nm=document.createElement('strong');nm.textContent=d.name;
@@ -119,6 +139,8 @@ function render(){const L=$('list');L.textContent='';
   x.onclick=async()=>{if(!confirm('Delete '+d.name+'?'))return;try{await api('/products/'+d._id,{method:'DELETE'});picked.delete(d._id);await load()}catch(er){say(er.message,true)}};
   acts.append(e,x);
   r.append(im,n,lab,acts);L.append(r)})}
+$('dishes-prev').onclick=()=>{if(dishPage>1){dishPage--;render()}};
+$('dishes-next').onclick=()=>{const maxP=Math.ceil(dishes.length/PAGE_SIZE);if(dishPage<maxP){dishPage++;render()}};
 $('f').onsubmit=async ev=>{ev.preventDefault();$('save').disabled=true;say('Saving…');try{const body=JSON.stringify({name:$('name').value,price_centavos:Math.round(parseFloat($('price').value)*100)});
  const id=$('id').value;const d=id?await api('/products/'+id,{method:'PATCH',body}):await api('/products',{method:'POST',body});
  if($('file').files[0])await api('/products/'+d._id+'/image',{method:'POST',body:JSON.stringify({data_url:await resize($('file').files[0])})});

@@ -48,7 +48,11 @@ export function validateOrder(raw) {
   });
   const payment_method = raw.payment_method;
   if (!['cash', 'exact', 'gcash'].includes(payment_method)) throw orderError('payment_method must be cash, exact or gcash');
-  const payment_reference = payment_method === 'gcash' ? text(raw.payment_reference, 'payment_reference', 100) : null;
+  const payment_reference = payment_method === 'gcash'
+    ? (typeof raw.payment_reference === 'string' && raw.payment_reference.trim()
+        ? text(raw.payment_reference, 'payment_reference', 100)
+        : `GCASH-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`)
+    : null;
   const input = {
     customer_id, items, fee_centavos: integer(raw.fee_centavos ?? 0, 'fee_centavos'),
     payment_method, payment_reference,

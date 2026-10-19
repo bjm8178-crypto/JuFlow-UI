@@ -99,7 +99,7 @@ describe('strict authoritative order intake', () => {
       { items: [{ name: 'x', quantity: true, price_centavos: 1 }] },
       { items: [{ name: 'x', quantity: 1.5, price_centavos: 1 }] },
       { items: [{ name: 'x', quantity: 1 }] }, { items: Array(101).fill({ name: 'x', quantity: 1, price_centavos: 1 }) },
-      { payment_method: 'gcash' }, { payment_method: 'unsupported' } ]) {
+      { payment_method: 'gcash', payment_reference: 'x'.repeat(101) }, { payment_method: 'unsupported' } ]) {
       assert.throws(() => validateOrder({ ...body(), ...change }), error => error.status === 400);
     }
   });

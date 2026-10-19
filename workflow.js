@@ -79,36 +79,85 @@
   function addItem() {
     const row = document.createElement('div'); row.className = 'item-row';
     const options = menuDishes.map(d => `<option value="${E(d._id)}">${E(d.name)} - ${money(d.price_centavos)}</option>`).join('');
-    row.innerHTML = '<select class="dish-select" aria-label="Dish from today\'s menu"><option value="">Choose a dish...</option>' + options + '<option value="__custom">Other item (type it)</option></select><input class="item-name" aria-label="Food item" placeholder="Food item" maxlength="120" hidden><input aria-label="Quantity" type="number" min="1" max="999" step="1" value="1" required><input aria-label="Unit price in pesos" type="number" min=".01" max="100000" step=".01" placeholder="Pesos each" required readonly><button type="button" class="text-button" aria-label="Remove item">Remove</button>';
-    const select = row.querySelector('select'), [name, , price] = row.querySelectorAll('input');
+    row.innerHTML = `
+      <select class="dish-select" aria-label="Dish from today's menu">
+        <option value="">Choose available dish...</option>
+        ${options}
+        <option value="__custom">Other item (type it)</option>
+      </select>
+      <input class="item-name" aria-label="Food item" placeholder="Custom food name" maxlength="120" hidden>
+      <div class="qty-stepper" aria-label="Quantity selector">
+        <button type="button" class="qty-btn qty-minus" aria-label="Decrease quantity">&minus;</button>
+        <input class="qty-input" aria-label="Quantity" type="number" min="1" max="999" step="1" value="1" required>
+        <button type="button" class="qty-btn qty-plus" aria-label="Increase quantity">&plus;</button>
+      </div>
+      <input class="unit-price" aria-label="Unit price in pesos" type="number" min=".01" max="100000" step=".01" placeholder="Price (₱)" required readonly>
+      <button type="button" class="text-button remove-item-btn" aria-label="Remove item">Remove</button>
+    `;
+    const select = row.querySelector('.dish-select');
+    const nameInput = row.querySelector('.item-name');
+    const qtyInput = row.querySelector('.qty-input');
+    const priceInput = row.querySelector('.unit-price');
+    const minusBtn = row.querySelector('.qty-minus');
+    const plusBtn = row.querySelector('.qty-plus');
+
+    minusBtn.onclick = () => {
+      let q = parseInt(qtyInput.value, 10) || 1;
+      if (q > 1) { qtyInput.value = q - 1; totals(); }
+    };
+    plusBtn.onclick = () => {
+      let q = parseInt(qtyInput.value, 10) || 1;
+      if (q < 999) { qtyInput.value = q + 1; totals(); }
+    };
+    qtyInput.oninput = () => totals();
+    priceInput.oninput = () => totals();
+
     select.onchange = () => {
       const custom = select.value === '__custom', dish = menuDishes.find(d => d._id === select.value);
-      name.hidden = !custom; name.required = custom; price.readOnly = !custom;
-      name.value = custom ? '' : dish ? dish.name : '';
-      price.value = custom || !dish ? '' : (dish.price_centavos / 100).toFixed(2);
+      nameInput.hidden = !custom; nameInput.required = custom; priceInput.readOnly = !custom;
+      nameInput.value = custom ? '' : dish ? dish.name : '';
+      priceInput.value = custom || !dish ? '' : (dish.price_centavos / 100).toFixed(2);
       totals();
     };
-    if (!menuDishes.length) { select.value = '__custom'; row._auto = true; name.hidden = false; name.required = true; price.readOnly = false; }
-    row.querySelector('button').onclick = () => { row.remove(); totals(); };
+    if (!menuDishes.length) { select.value = '__custom'; row._auto = true; nameInput.hidden = false; nameInput.required = true; priceInput.readOnly = false; }
+    row.querySelector('.remove-item-btn').onclick = () => { row.remove(); totals(); };
     $('#item-rows').append(row);
   }
   function orderValues() {
-    const items = [...document.querySelectorAll('.item-row')].map(row => { const inputs = row.querySelectorAll('input'); const picked = row.querySelector('select')?.value; const item = { name: inputs[0].value.trim(), quantity: Number(inputs[1].value), price_centavos: Math.round(Number(inputs[2].value) * 100) }; if (picked && picked !== '__custom') item.product_id = picked; return item; });
+    const items = [...document.querySelectorAll('.item-row')].map(row => {
+      const name = row.querySelector('.item-name')?.value.trim();
+      const qty = Number(row.querySelector('.qty-input')?.value || 1);
+      const pr = Math.round(Number(row.querySelector('.unit-price')?.value || 0) * 100);
+      const picked = row.querySelector('select')?.value;
+      const item = { name, quantity: qty, price_centavos: pr };
+      if (picked && picked !== '__custom') item.product_id = picked;
+      return item;
+    });
     const fee = Math.round(Number($('#delivery-fee').value) * 100);
     const total = items.reduce((sum, item) => sum + item.quantity * item.price_centavos, fee);
     const method = $('#payment-method').value;
-    return { items, fee_centavos: fee, total, payment_method: method, cash_tendered_centavos: method === 'cash' ? Math.round(Number($('#cash-tendered').value) * 100) : method === 'exact' ? total : null, payment_reference: method === 'gcash' ? $('#payment-reference').value.trim() : null };
+    const ref = $('#payment-reference')?.value.trim() || null;
+    return {
+      items,
+      fee_centavos: fee,
+      total,
+      payment_method: method,
+      cash_tendered_centavos: method === 'cash' ? Math.round(Number($('#cash-tendered').value) * 100) : method === 'exact' ? total : null,
+      payment_reference: method === 'gcash' ? ref : null
+    };
   }
   function totals() {
     const order = orderValues();
     $('#cash-field').hidden = order.payment_method !== 'cash'; $('#cash-tendered').required = order.payment_method === 'cash';
-    $('#reference-field').hidden = order.payment_method !== 'gcash'; $('#payment-reference').required = order.payment_method === 'gcash';
+    $('#reference-field').hidden = order.payment_method !== 'gcash';
+    if ($('#payment-reference')) $('#payment-reference').required = false; // Automatic if left empty
     $('#payment-summary').textContent = 'Estimated total ' + money(order.total) + '. The server confirms the final total.';
   }
   function newOrder(c) {
     const form = $('#order-form'); form.reset(); report(form, { message: '' }); orderAttempt = null;
     form.dataset.customer = c._id; $('#order-customer-name').textContent = c.name;
-    $('#order-address').textContent = c.address + ' · ' + (c.landmark || 'No landmark') + (hasPin(c) ? '' : ' · No pin saved');
+    const pin = hasPin(c);
+    $('#order-address').textContent = c.address + ' · ' + (c.landmark || 'No landmark') + (pin ? ' · 📍 Pinned' : ' · ⚠️ No pin saved');
     $('#item-rows').innerHTML = ''; addItem(); totals(); $('#order-dialog').showModal();
     // Refresh today's menu in the background; swap in the dropdown if the first row is still untouched.
     loadMenu().then(() => {
@@ -121,7 +170,6 @@
     if (!$('#address-confirm').checked) throw Error('Confirm the delivery address.');
     if (!value.items.length || value.items.some(item => !item.name || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 999 || !Number.isSafeInteger(item.price_centavos) || item.price_centavos <= 0) || !Number.isSafeInteger(value.fee_centavos) || value.fee_centavos < 0 || !Number.isSafeInteger(value.total) || value.total <= 0) throw Error('Add valid items, quantities, prices and delivery fee.');
     if (value.payment_method === 'cash' && (!Number.isSafeInteger(value.cash_tendered_centavos) || value.cash_tendered_centavos < value.total)) throw Error('Customer cash must cover the total.');
-    if (value.payment_method === 'gcash' && !value.payment_reference) throw Error('Enter the GCash payment reference.');
     const { total, ...fields } = value;
     const payload = { customer_id: form.dataset.customer, ...fields, notes: $('#order-notes').value.trim() };
     const fingerprint = JSON.stringify(payload);
@@ -157,32 +205,34 @@
 
   /* Rider pin file: { app:'juflow', type:'customer-pin', version:1, lat, lng, accuracy_m, customer:{id,name,phone,address} } */
   const digits = value => String(value || '').replace(/\D/g, '').slice(-10);
-  const pinImport = { customer: null, lat: null, lng: null };
+  const pinImport = { customer: null, lat: null, lng: null, landmark: null };
   async function readPinFile(file) {
     if (!file) return;
     let data;
-    try { data = JSON.parse(await file.text()); } catch { throw Error('That file is not a Juki pin file.'); }
+    try { data = JSON.parse(await file.text()); } catch { throw Error('That file is not a valid JuKi pin file.'); }
     const ok = data && data.app === 'juflow' && data.type === 'customer-pin' && data.version === 1;
-    const lat = data?.lat, lng = data?.lng;
-    if (!ok || typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw Error('That file is not a valid Juki pin file.');
+    const lat = data?.lat, lng = data?.lng, landmark = data?.landmark || data?.customer?.landmark || null;
+    if (!ok || typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw Error('That file is not a valid JuKi pin file.');
     const ref = data.customer || {};
     let match = ref.id && state.customers.find(c => c._id === ref.id);
     if (!match && digits(ref.phone).length >= 7) { const same = state.customers.filter(c => digits(c.phone) === digits(ref.phone)); if (same.length === 1) match = same[0]; }
     const fallback = !match; if (fallback) match = state.customers.find(c => c._id === state.selected);
     if (!match) throw Error('Could not tell which customer this pin is for. Select the customer first, then import again.');
-    Object.assign(pinImport, { customer: match, lat, lng });
+    Object.assign(pinImport, { customer: match, lat, lng, landmark });
     const when = data.captured_at && !Number.isNaN(Date.parse(data.captured_at)) ? new Date(data.captured_at).toLocaleString() : 'unknown time';
     const accuracy = Number.isFinite(data.accuracy_m) ? `about ${Math.round(data.accuracy_m)} m` : 'not reported';
-    $('#pin-summary').innerHTML = `${fallback ? `<p class="notice-warn">The file is for <strong>${E(ref.name || 'an unknown customer')}</strong>, but no matching customer was found. It will be saved to the customer you selected.</p>` : ''}<div class="profile-details"><div><small>SAVE TO</small><strong>${E(match.name)}</strong></div><div><small>ADDRESS</small><strong>${E(match.address)}</strong></div><div><small>NEW PIN</small><strong>${E(lat + ', ' + lng)}</strong></div><div><small>GPS ACCURACY</small><strong>${E(accuracy)}</strong></div><div><small>CAPTURED</small><strong>${E(when)}</strong></div><div><small>CURRENT PIN</small><strong>${hasPin(match) ? E(match.lat + ', ' + match.lng) : 'No pin saved'}</strong></div></div><a class="secondary" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(lat + ',' + lng)}">Check this pin in Google Maps</a>`;
+    $('#pin-summary').innerHTML = `${fallback ? `<p class="notice-warn">The file is for <strong>${E(ref.name || 'an unknown customer')}</strong>, but no matching customer was found. It will be saved to the customer you selected.</p>` : ''}<div class="profile-details"><div><small>SAVE TO</small><strong>${E(match.name)}</strong></div><div><small>ADDRESS</small><strong>${E(match.address)}</strong></div><div><small>LANDMARK NOTE</small><strong>${E(landmark || match.landmark || 'No landmark specified')}</strong></div><div><small>NEW PIN</small><strong>${E(lat + ', ' + lng)}</strong></div><div><small>GPS ACCURACY</small><strong>${E(accuracy)}</strong></div><div><small>CAPTURED</small><strong>${E(when)}</strong></div><div><small>CURRENT PIN</small><strong>${hasPin(match) ? E(match.lat + ', ' + match.lng) : 'No pin saved'}</strong></div></div><a class="secondary" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(lat + ',' + lng)}">Check this pin in Google Maps</a>`;
     $('#pin-form .form-error').textContent = '';
     $('#pin-dialog').showModal();
   }
   async function savePin() {
-    const { customer, lat, lng } = pinImport;
-    const saved = await send(`/customers/${endpointId(customer._id)}`, 'PATCH', { lat, lng });
+    const { customer, lat, lng, landmark } = pinImport;
+    const patchBody = { lat, lng };
+    if (landmark) patchBody.landmark = landmark;
+    const saved = await send(`/customers/${endpointId(customer._id)}`, 'PATCH', patchBody);
     if (!saved?._id) throw Error('The server did not confirm the pin.');
     const index = state.customers.findIndex(c => c._id === saved._id); if (index >= 0) state.customers[index] = saved;
-    state.selected = saved._id; $('#pin-dialog').close(); customerList(); notice(`Pin saved for ${saved.name}.`); await loadHistory();
+    state.selected = saved._id; $('#pin-dialog').close(); customerList(); notice(`Pin and landmark saved for ${saved.name}.`); await loadHistory();
   }
   async function refresh(quiet) {
     if (quiet !== true) notice('Loading saved records...');

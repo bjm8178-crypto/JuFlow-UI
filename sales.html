@@ -33,9 +33,15 @@
   </article>
 </div>
 
+<div class="analytics-tabs" role="tablist" aria-label="Analytics view period">
+  <button type="button" class="analytics-tab active" role="tab" id="tab-monthly" aria-selected="true" data-analytics-tab="monthly">Monthly</button>
+  <button type="button" class="analytics-tab" role="tab" id="tab-weekly" aria-selected="false" data-analytics-tab="weekly">Weekly</button>
+  <button type="button" class="analytics-tab" role="tab" id="tab-daily" aria-selected="false" data-analytics-tab="daily">Daily</button>
+</div>
+
 <div class="overview-grid">
-  <section class="panel"><div class="panel-heading"><div><h2>Sales by hour</h2><p>12 AM to 11 PM · Philippine time</p></div></div><div id="sales-chart" class="live-chart"></div></section>
-  <section class="panel"><div class="panel-heading"><div><h2>Top-selling food</h2><p>Ranked by quantity on the selected day</p></div></div><div id="top-products" class="top-products"></div></section>
+  <section class="panel"><div class="panel-heading"><div><h2 id="chart-title">Monthly sales overview</h2><p id="chart-sub">Past 6 months · Philippine time</p></div></div><div id="sales-chart" class="live-chart"></div></section>
+  <section class="panel"><div class="panel-heading"><div><h2 id="top-title">Top-selling food (Monthly)</h2><p id="top-sub">Ranked by units sold</p></div></div><div id="top-products" class="top-products"></div></section>
 </div>
 
 <div class="payment-split">

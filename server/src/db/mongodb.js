@@ -144,7 +144,7 @@ export async function createIndexes(database = getDb()) {
     await db.collection('deliveries').createIndex({ status: 1 });
 
     // Counters for atomic sequences
-    // MongoDB already provides the unique _id index for counters.
+    try { await db.createCollection('counters'); } catch (_) {}
 
     // Audit events
     await db.collection('audit_events').createIndex({ entity_type: 1, entity_id: 1, created_at: -1 });

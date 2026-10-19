@@ -15,7 +15,7 @@ function filter(req, start, end) {
 router.get('/', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
     const { start, end } = reportRange(req.query);
-    const page = Number(req.query.page ?? 1), limit = Number(req.query.limit ?? 50);
+    const page = Number(req.query.page ?? 1), limit = Number(req.query.limit ?? 10);
     if (!Number.isSafeInteger(page) || page < 1 || page > 100000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) return res.status(400).json({ error: 'validation_error', message: 'Invalid pagination' });
     const query = filter(req, start, end), collection = getDb().collection('sales');
     const [items, total] = await Promise.all([collection.find(query).sort({ sale_time: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).toArray(), collection.countDocuments(query)]);
@@ -37,15 +37,41 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
     const db = getDb(), range = reportRange(req.query);
     const match = filter(req, range.start, range.end);
     const aggregate = stages => db.collection('sales').aggregate(stages).toArray();
-    const [totals, month, hourly, products, payments, days] = await Promise.all([
+    const topStage = matchCond => [
+      { $match: matchCond },
+      { $sort: { sale_time: 1 } },
+      { $unwind: '$items' },
+      { $group: { _id: { $ifNull: [{ $toString: '$items.product_id' }, '$items.name'] }, name: { $last: '$items.name' }, units: { $sum: '$items.quantity' }, revenue: { $sum: { $multiply: ['$items.quantity', '$items.price_centavos'] } } } },
+      { $project: { _id: '$name', units: 1, revenue: 1 } },
+      { $sort: { units: -1, _id: 1 } },
+      { $match: { units: { $gt: 0 } } },
+      { $limit: 6 }
+    ];
+    const sixMonthsAgo = new Date(range.start.getTime() - 180 * 86400000);
+    const [totals, month, hourly, products, payments, days, monthlySales, weeklyTop, monthlyTop] = await Promise.all([
       aggregate([{ $match: match }, { $group: { _id: null, total_centavos: { $sum: '$total_centavos' }, food_centavos: { $sum: { $ifNull: ['$food_centavos', '$total_centavos'] } }, fee_centavos: { $sum: '$fee_centavos' }, transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } }, units_sold: { $sum: { $sum: '$items.quantity' } } } }]),
       aggregate([{ $match: filter(req, range.monthStart, range.monthEnd) }, { $group: { _id: null, total: { $sum: '$total_centavos' } } }]),
       aggregate([{ $match: match }, { $group: { _id: { $hour: { date: '$sale_time', timezone: 'Asia/Manila' } }, total: { $sum: '$total_centavos' } } }, { $sort: { _id: 1 } }]),
-      aggregate([{ $match: match }, { $sort: { sale_time: 1 } }, { $unwind: '$items' }, { $group: { _id: { $ifNull: [{ $toString: '$items.product_id' }, '$items.name'] }, name: { $last: '$items.name' }, units: { $sum: '$items.quantity' }, revenue: { $sum: { $multiply: ['$items.quantity', '$items.price_centavos'] } } } }, { $project: { _id: '$name', units: 1, revenue: 1 } }, { $sort: { units: -1, _id: 1 } }, { $match: { units: { $gt: 0 } } }, { $limit: 5 }]),
+      aggregate(topStage(match)),
       aggregate([{ $match: match }, { $group: { _id: '$payment_method', total_centavos: { $sum: '$total_centavos' }, transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } } } }]),
-      aggregate([{ $match: filter(req, range.weekStart, range.weekEnd) }, { $group: { _id: { $dateToString: { date: '$sale_time', format: '%Y-%m-%d', timezone: 'Asia/Manila' } }, total_centavos: { $sum: '$total_centavos' } } }, { $sort: { _id: 1 } }])
+      aggregate([{ $match: filter(req, range.weekStart, range.weekEnd) }, { $group: { _id: { $dateToString: { date: '$sale_time', format: '%Y-%m-%d', timezone: 'Asia/Manila' } }, total_centavos: { $sum: '$total_centavos' } } }, { $sort: { _id: 1 } }]),
+      aggregate([{ $match: filter(req, sixMonthsAgo, range.end) }, { $group: { _id: { $dateToString: { date: '$sale_time', format: '%Y-%m', timezone: 'Asia/Manila' } }, total_centavos: { $sum: '$total_centavos' }, transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } }, units_sold: { $sum: { $sum: '$items.quantity' } } } }, { $sort: { _id: 1 } }]),
+      aggregate(topStage(filter(req, range.weekStart, range.weekEnd))),
+      aggregate(topStage(filter(req, range.monthStart, range.monthEnd)))
     ]);
-    res.json({ total_centavos: 0, food_centavos: 0, fee_centavos: 0, transaction_count: 0, units_sold: 0, ...totals[0], month_to_date_centavos: month[0]?.total || 0, by_hour: hourly, top_products: products, by_payment: payments, last_seven_days: days });
+    res.json({
+      total_centavos: 0, food_centavos: 0, fee_centavos: 0, transaction_count: 0, units_sold: 0,
+      ...totals[0],
+      month_to_date_centavos: month[0]?.total || 0,
+      by_hour: hourly,
+      top_products: products,
+      top_products_daily: products,
+      top_products_weekly: weeklyTop,
+      top_products_monthly: monthlyTop,
+      by_payment: payments,
+      last_seven_days: days,
+      by_month: monthlySales
+    });
   } catch (error) { next(error); }
 });
 export function createTodaySalesHandler({ database = getDb, clock = () => new Date() } = {}) {

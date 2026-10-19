@@ -5,7 +5,7 @@
     <script src="/auth-guard.js"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Customers · Juki</title>
+    <title>Customers · JuKi</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="app.js" defer></script>
     <script src="store.js" defer></script>
@@ -28,7 +28,7 @@
       <a class="brand" href="index.html"
         ><span class="brand-mark">J<span>•</span></span
         ><span
-          >Juki<span class="brand-sub">JU KITCHEN OPERATIONS</span></span
+          >JuKi<span class="brand-sub">OPERATIONS</span></span
         ></a
       >
       <nav aria-label="Main navigation">
@@ -135,7 +135,7 @@
         </button>
         <div class="workspace-card">
           <span class="workspace-dot"></span>
-          <div><strong>Ju Kitchen</strong><small>Marilao, Bulacan</small></div>
+          <div><strong>JuKi</strong><small>Marilao, Bulacan</small></div>
         </div>
       </div>
     </aside>
@@ -178,7 +178,7 @@
             ><i class="notification-dot"></i></button
           ><span class="top-divider"></span><span class="avatar">AD</span>
           <div class="profile">
-            <strong>Administrator</strong><small>Ju Kitchen</small>
+            <strong>Administrator</strong><small>JuKi</small>
           </div>
           <a
             class="icon-button logout"
@@ -276,9 +276,12 @@
             <section class="customer-pin-editor">
               <h2>Customer location</h2>
               <p class="map-help">
-                Click the map or drag the orange pin to the customer’s exact
-                doorstep.
+                Search an address or click and drag the pin to the customer’s exact doorstep.
               </p>
+              <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <input id="map-search-input" placeholder="Search address, barangay, or landmark..." style="flex:1;">
+                <button id="map-search-btn" type="button" class="secondary" style="white-space:nowrap;">Search location</button>
+              </div>
               <p id="map-provider" class="map-help"></p>
               <button id="capture-gps" type="button" class="secondary">
                 Use my GPS here

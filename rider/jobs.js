@@ -33,11 +33,22 @@
 
   function customerHtml(c) {
     c = c || {};
+    const hasPin = Number.isFinite(c.lat) && Number.isFinite(c.lng);
+    const hasLandmark = Boolean(c.landmark && c.landmark.trim());
+    const isCompleted = Boolean(c.address && hasPin && hasLandmark);
     return `
       <strong>${esc(c.name || 'Customer')}</strong>
       ${c.phone ? `<br><a href="tel:${esc(c.phone)}" class="tel-link">${esc(c.phone)}</a>` : ''}
       ${c.address ? `<br><small>📍 ${esc(c.address)}</small>` : ''}
-      ${c.landmark ? `<br><small style="color:var(--text-muted);">Landmark: ${esc(c.landmark)}</small>` : ''}`;
+      ${c.landmark ? `<br><small style="color:var(--text-muted);">Landmark: ${esc(c.landmark)}</small>` : ''}
+      <div style="margin-top:6px;">
+        ${isCompleted
+          ? '<span class="badge badge-success" style="font-size:11px;padding:3px 8px;">✓ Address Completed &amp; Pinned</span>'
+          : hasPin
+            ? '<span class="badge badge-info" style="font-size:11px;padding:3px 8px;">📍 Pinned (No landmark)</span>'
+            : '<span class="badge badge-warning" style="font-size:11px;padding:3px 8px;white-space:normal;line-height:1.3;display:inline-block;">⚠️ Wala pang pin location - coordinate kay cashier/admin</span>'
+        }
+      </div>`;
   }
 
   function paymentHtml(job) {

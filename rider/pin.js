@@ -9,8 +9,9 @@
   const round6 = (n) => Math.round(n * 1e6) / 1e6;
   const GOOD_ACCURACY_M = 30;
 
-  function fileFor(job, fix) {
+  function fileFor(job, fix, landmarkText) {
     const c = job.customer || {};
+    const finalLandmark = landmarkText || c.landmark || null;
     const payload = {
       app: 'juflow',
       type: 'customer-pin',
@@ -21,10 +22,12 @@
         id: job.customer_id ? String(job.customer_id) : null,
         name: c.name || null,
         phone: c.phone || null,
-        address: c.address || null
+        address: c.address || null,
+        landmark: finalLandmark
       },
       lat: round6(fix.lat),
       lng: round6(fix.lng),
+      landmark: finalLandmark,
       accuracy_m: Math.round(fix.accuracy)
     };
     const safe = String(job.order_number || 'order').replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'order';
@@ -54,11 +57,15 @@
       <h3>Pin this customer’s door</h3>
       <p class="muted small">${hadPin
         ? 'This customer already has a saved pin. Capture a new one only if it was wrong.'
-        : 'No pin saved yet. Stand at the customer’s door, capture your location, then save the file for the admin.'}</p>
+        : 'Wala pang pin location si customer. Stand at customer’s door, capture location, and export the file for admin/cashier.'}</p>
+      <div style="margin:10px 0;">
+        <label style="display:block;font-size:12px;font-weight:600;margin-bottom:4px;">Landmark description (optional)</label>
+        <input type="text" class="pin-landmark-input" placeholder="e.g. Blue gate tapat ng sari-sari store" value="${esc(c.landmark || '')}" style="width:100%;padding:8px 10px;border:1px solid #dce1d9;border-radius:6px;font-size:13px;">
+      </div>
       <div class="pin-readout" role="status" aria-live="polite">No location captured yet.</div>
       <div class="pin-actions">
         <button type="button" class="app-btn secondary full" data-capture>Capture my location</button>
-        <button type="button" class="app-btn primary full" data-save disabled>Save pin file</button>
+        <button type="button" class="app-btn primary full" data-save disabled>Export my pinned location</button>
         <button type="button" class="app-btn secondary full" data-share hidden>Send file…</button>
       </div>`;
 
@@ -101,9 +108,10 @@
 
     save.onclick = () => {
       if (!fix) return;
-      const file = fileFor(job, fix);
+      const landmarkVal = el.querySelector('.pin-landmark-input')?.value.trim();
+      const file = fileFor(job, fix, landmarkVal);
       download(file);
-      show(`Saved <strong>${esc(file.name)}</strong> to this phone. Send it to the admin.`, 'good');
+      show(`Exported <strong>${esc(file.name)}</strong> to this phone. Send it to the admin.`, 'good');
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         share.hidden = false;
         share.onclick = async () => {
