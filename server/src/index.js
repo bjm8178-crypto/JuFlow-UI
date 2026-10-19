@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { connect, close, readiness } from './db/mongodb.js';
+import { connect, close, readiness, getDb } from './db/mongodb.js';
 import { productionConfig, validateStartup } from './lib/config.js';
 import { bootstrap } from './db/bootstrap.js';
 import { cashierTokenAuth } from './middleware/cashier.js';
