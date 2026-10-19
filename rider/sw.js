@@ -1,7 +1,7 @@
 // Juki Rider App - Service Worker
 // Offline-first caching strategy for PWA
 
-const CACHE_VERSION = 'v6-juki';
+const CACHE_VERSION = 'v7-juki';
 const CACHE_NAME = `juflow-rider-${CACHE_VERSION}`;
 
 // Files to precache (app shell)
