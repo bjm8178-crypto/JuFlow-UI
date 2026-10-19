@@ -19,9 +19,11 @@
   const send = (endpoint, method, body) => request(endpoint, { method, body: JSON.stringify(body) });
   function notice(message) { $('#workflow-status').textContent = message; }
   function report(form, error) {
-    const msg = error?.message || (typeof error === 'string' ? error : 'Request failed. Please retry.');
     const target = form.querySelector('.form-error');
-    if (target) target.textContent = msg;
+    if (!target) return;
+    if (!error || error.message === '') { target.textContent = ''; return; }
+    const msg = typeof error === 'string' ? error : (error.message || error.error || 'Request failed. Please retry.');
+    target.textContent = msg;
   }
   async function submit(form, work) {
     if (form.dataset.busy === 'true') return;
@@ -226,7 +228,12 @@
     const payload = { customer_id: form.dataset.customer, ...fields, notes: $('#order-notes').value.trim() };
     const fingerprint = JSON.stringify(payload);
     if (orderAttempt && orderAttempt.fingerprint !== fingerprint) throw Error('A previous attempt has an uncertain result. Restore its values and retry, or close and verify Orders before creating another order.');
-    if (!orderAttempt) orderAttempt = { fingerprint, payload: { ...payload, idempotency_key: crypto.randomUUID() } };
+    if (!orderAttempt) {
+      const uuid = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16); });
+      orderAttempt = { fingerprint, payload: { ...payload, idempotency_key: uuid } };
+    }
     const saved = await send('/orders', 'POST', orderAttempt.payload);
     if (!saved?._id || !saved.order_number || !Number.isSafeInteger(saved.total_centavos)) throw Error('The server did not return a confirmed order. Retry with the same values.');
     orderAttempt = null; $('#order-dialog').close(); notice(`Order ${saved.order_number} saved. Confirmed total ${money(saved.total_centavos)}.`); await loadHistory();
