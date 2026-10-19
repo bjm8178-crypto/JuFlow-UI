@@ -73,11 +73,13 @@
     const peakIdx = peak > 0 ? values.indexOf(peak) : -1;
     el('sales-chart').innerHTML =
       '<div class="month-bars" role="img" aria-label="Monthly sales">' +
-      months.map((m, i) =>
-        `<div class="month-column${i === peakIdx ? ' peak' : ''}" title="${monthName(m._id)} · ${money(m.total_centavos || 0)}"><div class="month-bar${m.total_centavos ? '' : ' zero'}" style="height:${m.total_centavos ? Math.max(6, (m.total_centavos || 0) / max * 100) : 0}%"><span class="sr-only">${monthName(m._id)} ${money(m.total_centavos || 0)}</span></div><small>${monthName(m._id)}</small></div>`
-      ).join('') +
+      months.map((m, i) => {
+        const val = m.total_centavos || 0;
+        const heightPct = val ? Math.max(10, Math.round((val / max) * 100)) : 0;
+        return `<div class="month-column${i === peakIdx && peak > 0 ? ' peak' : ''}" title="${monthName(m._id)} · ${money(val)}"><div class="month-bar${val ? '' : ' zero'}" style="height:${heightPct}%"><span class="sr-only">${monthName(m._id)} ${money(val)}</span></div><small>${monthName(m._id)}</small></div>`;
+      }).join('') +
       '</div>' +
-      `<p class="chart-peak">${peakIdx >= 0 ? `Peak month: <strong>${monthName(months[peakIdx]._id)}</strong> · ${money(peak)}` : 'No monthly sales recorded yet.'}</p>`;
+      `<p class="chart-peak">${peakIdx >= 0 && peak > 0 ? `Peak month: <strong>${monthName(months[peakIdx]._id)}</strong> · ${money(peak)}` : 'No monthly sales recorded yet.'}</p>`;
   }
 
   function renderWeeklyChart(sevenDays) {
@@ -91,10 +93,12 @@
       days.map((d, i) => {
         const dateObj = new Date(d._id + 'T00:00:00Z');
         const dayLabel = dateObj.toLocaleDateString('en-PH', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'UTC' });
-        return `<div class="month-column${i === peakIdx ? ' peak' : ''}" title="${d._id} · ${money(d.total_centavos || 0)}"><div class="month-bar${d.total_centavos ? '' : ' zero'}" style="height:${d.total_centavos ? Math.max(6, (d.total_centavos || 0) / max * 100) : 0}%"><span class="sr-only">${dayLabel} ${money(d.total_centavos || 0)}</span></div><small>${dayLabel}</small></div>`;
+        const val = d.total_centavos || 0;
+        const heightPct = val ? Math.max(10, Math.round((val / max) * 100)) : 0;
+        return `<div class="month-column${i === peakIdx && peak > 0 ? ' peak' : ''}" title="${d._id} · ${money(val)}"><div class="month-bar${val ? '' : ' zero'}" style="height:${heightPct}%"><span class="sr-only">${dayLabel} ${money(val)}</span></div><small>${dayLabel}</small></div>`;
       }).join('') +
       '</div>' +
-      `<p class="chart-peak">${peakIdx >= 0 ? `Peak day: <strong>${days[peakIdx]._id}</strong> · ${money(peak)}` : 'No sales recorded this week.'}</p>`;
+      `<p class="chart-peak">${peakIdx >= 0 && peak > 0 ? `Peak day: <strong>${days[peakIdx]._id}</strong> · ${money(peak)}` : 'No sales recorded this week.'}</p>`;
   }
 
   function renderDailyChart(byHour) {
@@ -106,10 +110,10 @@
     el('sales-chart').innerHTML =
       '<div class="hour-bars" role="img" aria-label="Hourly sales">' +
       values.map((v, h) =>
-        `<div class="hour-column${h === peakHour ? ' peak' : ''}" title="${hourLabel(h)} · ${money(v)}"><div class="hour-bar${v ? '' : ' zero'}" style="height:${v ? Math.max(4, v / max * 100) : 0}%"><span class="sr-only">${hourLabel(h)} ${money(v)}</span></div><small>${h % 4 === 0 ? (h % 12 || 12) + (h < 12 ? 'a' : 'p') : ''}</small></div>`
+        `<div class="hour-column${h === peakHour && peak > 0 ? ' peak' : ''}" title="${hourLabel(h)} · ${money(v)}"><div class="hour-bar${v ? '' : ' zero'}" style="height:${v ? Math.max(4, v / max * 100) : 0}%"><span class="sr-only">${hourLabel(h)} ${money(v)}</span></div><small>${h % 4 === 0 ? (h % 12 || 12) + (h < 12 ? 'a' : 'p') : ''}</small></div>`
       ).join('') +
       '</div>' +
-      `<p class="chart-peak">${peakHour >= 0 ? `Peak hour: <strong>${hourLabel(peakHour)}</strong> · ${money(peak)}` : 'No sales recorded for this day yet.'}</p>`;
+      `<p class="chart-peak">${peakHour >= 0 && peak > 0 ? `Peak hour: <strong>${hourLabel(peakHour)}</strong> · ${money(peak)}` : 'No sales recorded for this day yet.'}</p>`;
   }
 
   function renderTopProducts(list, periodName) {
@@ -122,10 +126,20 @@
 
   function updateView(d) {
     if (!d) return;
+    const monthlyList = (d.top_products_monthly && d.top_products_monthly.length)
+      ? d.top_products_monthly
+      : ((d.top_products && d.top_products.length) ? d.top_products : (d.top_products_weekly || []));
+    const weeklyList = (d.top_products_weekly && d.top_products_weekly.length)
+      ? d.top_products_weekly
+      : (monthlyList || []);
+    const dailyList = (d.top_products_daily && d.top_products_daily.length)
+      ? d.top_products_daily
+      : (weeklyList.length ? weeklyList : (d.top_products || []));
+
     if (!isSalesPage) {
       // Main dashboard: Monthly sales graph and monthly top-selling food
       renderMonthlyChart(d.by_month);
-      renderTopProducts(d.top_products_monthly || d.top_products, 'this month');
+      renderTopProducts(monthlyList, 'this month');
       return;
     }
 
@@ -136,21 +150,21 @@
       if (el('top-title')) el('top-title').textContent = 'Top-selling food (Monthly)';
       if (el('top-sub')) el('top-sub').textContent = 'Ranked by units sold in the active month';
       renderMonthlyChart(d.by_month);
-      renderTopProducts(d.top_products_monthly || d.top_products, 'this month');
+      renderTopProducts(monthlyList, 'this month');
     } else if (currentTab === 'weekly') {
       if (el('chart-title')) el('chart-title').textContent = 'Weekly sales overview';
       if (el('chart-sub')) el('chart-sub').textContent = 'Past 7 days · Philippine time';
       if (el('top-title')) el('top-title').textContent = 'Top-selling food (Weekly)';
       if (el('top-sub')) el('top-sub').textContent = 'Ranked by units sold this week';
       renderWeeklyChart(d.last_seven_days);
-      renderTopProducts(d.top_products_weekly || d.top_products, 'this week');
+      renderTopProducts(weeklyList, 'this week');
     } else {
       if (el('chart-title')) el('chart-title').textContent = 'Daily sales by hour';
       if (el('chart-sub')) el('chart-sub').textContent = '12 AM to 11 PM · Philippine time';
       if (el('top-title')) el('top-title').textContent = 'Top-selling food (Daily)';
       if (el('top-sub')) el('top-sub').textContent = 'Ranked by quantity on the selected day';
       renderDailyChart(d.by_hour);
-      renderTopProducts(d.top_products_daily || d.top_products, 'today');
+      renderTopProducts(dailyList, 'today');
     }
   }
 

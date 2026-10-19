@@ -18,7 +18,11 @@
   }
   const send = (endpoint, method, body) => request(endpoint, { method, body: JSON.stringify(body) });
   function notice(message) { $('#workflow-status').textContent = message; }
-  function report(form, error) { form.querySelector('.form-error').textContent = error.message || 'Request failed. Please retry.'; }
+  function report(form, error) {
+    const msg = error?.message || (typeof error === 'string' ? error : 'Request failed. Please retry.');
+    const target = form.querySelector('.form-error');
+    if (target) target.textContent = msg;
+  }
   async function submit(form, work) {
     if (form.dataset.busy === 'true') return;
     form.dataset.busy = 'true';
@@ -41,7 +45,8 @@
     const c = state.customers.find(c => c._id === state.selected);
     if (!c) { $('#customer-profile').innerHTML = '<div class="empty"><h2>A familiar face, a saved address.</h2><p>Select a customer or add a new one.</p></div>'; return; }
     const pin = hasPin(c);
-    $('#customer-profile').innerHTML = `<div class="profile-heading"><div><span class="eyebrow">CUSTOMER PROFILE</span><h2>${E(c.name)}</h2><p>${E(c.messenger || 'No Messenger display name')}</p></div><button class="secondary" id="edit-customer">Edit details &amp; location</button></div><div class="profile-details"><div><small>CONTACT NUMBER</small><strong>${E(c.phone)}</strong></div><div><small>DELIVERY ADDRESS</small><strong>${E(c.address)}</strong></div><div><small>LANDMARK</small><strong>${E(c.landmark || 'No landmark added')}</strong></div><div><small>DESTINATION PIN</small><strong>${pin ? E(c.lat + ', ' + c.lng) : 'No pin saved'}</strong></div></div><div class="profile-location-actions"><button class="secondary" id="show-landmark">View landmark photo</button>${pin ? `<a class="secondary" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(c.lat + ',' + c.lng)}">Open pin in Google Maps</a>` : ''}</div><button class="primary" id="create-order">+ Create order for this customer</button><button class="secondary danger" id="delete-customer">Delete customer</button><div class="history"><h2>Order history</h2>${loading ? '<p>Loading history...</p>' : state.historyError ? `<p class="form-error" role="alert">${E(state.historyError)}</p><button class="secondary" id="retry-history">Retry history</button>` : state.history.map(o => `<div class="history-row"><div><strong>${E(o.order_number)}</strong><small>${E(new Date(o.created_at).toLocaleString())} · ${E(statusLabel(o))}</small></div><div>${money(o.total_centavos)}<small>${E(payment(o))}</small></div></div>`).join('') || '<p class="empty">No orders yet.</p>'}</div>`;
+    const hasPhoto = Boolean(c.landmark_photo);
+    $('#customer-profile').innerHTML = `<div class="profile-heading"><div><span class="eyebrow">CUSTOMER PROFILE</span><h2>${E(c.name)}</h2><p>${E(c.messenger || 'No Messenger display name')}</p></div><button class="secondary" id="edit-customer">Edit details &amp; location</button></div><div class="profile-details"><div><small>CONTACT NUMBER</small><strong>${E(c.phone)}</strong></div><div><small>DELIVERY ADDRESS</small><strong>${E(c.address)}</strong></div><div><small>LANDMARK</small><strong>${E(c.landmark || 'No landmark added')}</strong></div><div><small>DESTINATION PIN</small><strong>${pin ? E(c.lat + ', ' + c.lng) : 'No pin saved'}</strong></div></div><div class="profile-location-actions"><button class="secondary" id="show-landmark"${hasPhoto ? '' : ' disabled style="opacity:0.55;cursor:not-allowed;"'}>${hasPhoto ? '📷 View landmark photo' : '📷 No landmark photo'}</button><button class="secondary" id="import-pin" type="button">📍 Import rider pin</button>${pin ? `<a class="secondary" target="_blank" rel="noopener noreferrer" href="https://www.google.com/maps/search/?api=1&amp;query=${encodeURIComponent(c.lat + ',' + c.lng)}">Open pin in Google Maps</a>` : ''}</div><button class="primary" id="create-order">+ Create order for this customer</button><button class="secondary danger" id="delete-customer">Delete customer</button><div class="history"><h2>Order history</h2>${loading ? '<p>Loading history...</p>' : state.historyError ? `<p class="form-error" role="alert">${E(state.historyError)}</p><button class="secondary" id="retry-history">Retry history</button>` : state.history.map(o => `<div class="history-row"><div><strong>${E(o.order_number)}</strong><small>${E(new Date(o.created_at).toLocaleString())} · ${E(statusLabel(o))}</small></div><div>${money(o.total_centavos)}<small>${E(payment(o))}</small></div></div>`).join('') || '<p class="empty">No orders yet.</p>'}</div>`;
     $('#edit-customer').onclick = () => editCustomer(c);
     $('#create-order').onclick = () => newOrder(c);
     $('#delete-customer').onclick = () => deleteCustomer(c);
@@ -50,6 +55,10 @@
       const url = new URL(c.landmark_photo, window.location.origin);
       if (!['https:', 'http:'].includes(url.protocol) || url.origin !== window.location.origin) { notice('The landmark photo URL is unavailable.'); return; }
       $('#landmark-full').src = url.href; $('#landmark-viewer').showModal();
+    };
+    $('#import-pin').onclick = () => {
+      const pinFileInput = $('#pin-file');
+      if (pinFileInput) { pinFileInput.value = ''; pinFileInput.click(); }
     };
     if ($('#retry-history')) $('#retry-history').onclick = loadHistory;
   }
@@ -113,30 +122,72 @@
     priceInput.oninput = () => totals();
 
     select.onchange = () => {
-      const custom = select.value === '__custom', dish = menuDishes.find(d => d._id === select.value);
-      nameInput.hidden = !custom; nameInput.required = custom; priceInput.readOnly = !custom;
-      nameInput.value = custom ? '' : dish ? dish.name : '';
-      priceInput.value = custom || !dish ? '' : (dish.price_centavos / 100).toFixed(2);
+      const custom = select.value === '__custom';
+      const dish = menuDishes.find(d => d._id === select.value);
+      nameInput.hidden = !custom;
+      nameInput.required = custom;
+      priceInput.readOnly = !custom;
+      if (custom) {
+        nameInput.value = '';
+        priceInput.value = '';
+        nameInput.focus();
+      } else if (dish) {
+        nameInput.value = dish.name;
+        priceInput.value = (dish.price_centavos / 100).toFixed(2);
+      } else {
+        nameInput.value = '';
+        priceInput.value = '';
+      }
       totals();
     };
-    if (!menuDishes.length) { select.value = '__custom'; row._auto = true; nameInput.hidden = false; nameInput.required = true; priceInput.readOnly = false; }
-    row.querySelector('.remove-item-btn').onclick = () => { row.remove(); totals(); };
+
+    if (menuDishes.length > 0) {
+      select.value = menuDishes[0]._id;
+      nameInput.value = menuDishes[0].name;
+      nameInput.hidden = true;
+      nameInput.required = false;
+      priceInput.readOnly = true;
+      priceInput.value = (menuDishes[0].price_centavos / 100).toFixed(2);
+    } else {
+      select.value = '__custom';
+      row._auto = true;
+      nameInput.hidden = false;
+      nameInput.required = true;
+      priceInput.readOnly = false;
+    }
+
+    row.querySelector('.remove-item-btn').onclick = () => {
+      if (document.querySelectorAll('.item-row').length > 1) {
+        row.remove();
+        totals();
+      } else {
+        notice('Order must contain at least one food item.');
+      }
+    };
     $('#item-rows').append(row);
   }
   function orderValues() {
     const items = [...document.querySelectorAll('.item-row')].map(row => {
-      const name = row.querySelector('.item-name')?.value.trim();
-      const qty = Number(row.querySelector('.qty-input')?.value || 1);
-      const pr = Math.round(Number(row.querySelector('.unit-price')?.value || 0) * 100);
-      const picked = row.querySelector('select')?.value;
-      const item = { name, quantity: qty, price_centavos: pr };
-      if (picked && picked !== '__custom') item.product_id = picked;
+      const inputs = row.querySelectorAll ? row.querySelectorAll('input') : [];
+      const rawName = row.querySelector('.item-name')?.value ?? inputs[0]?.value ?? '';
+      const name = String(rawName || '').trim();
+      const rawQty = row.querySelector('.qty-input')?.value ?? inputs[1]?.value;
+      const qty = parseInt(rawQty, 10) || 1;
+      const rawPrice = row.querySelector('.unit-price')?.value ?? inputs[2]?.value ?? 0;
+      const pr = Math.round(Number(rawPrice || 0) * 100);
+      const select = row.querySelector('select');
+      const picked = select?.value;
+      const isCustom = picked === '__custom' || (!picked && !menuDishes.length);
+      const dish = menuDishes.find(d => d._id === picked);
+      const finalName = !isCustom && dish ? dish.name : name;
+      const item = { name: finalName, quantity: qty, price_centavos: pr };
+      if (!isCustom && picked && picked !== '__custom') item.product_id = picked;
       return item;
     });
     const fee = Math.round(Number($('#delivery-fee').value) * 100);
     const total = items.reduce((sum, item) => sum + item.quantity * item.price_centavos, fee);
     const method = $('#payment-method').value;
-    const ref = $('#payment-reference')?.value.trim() || null;
+    const ref = $('#payment-reference')?.value?.trim() || null;
     return {
       items,
       fee_centavos: fee,
@@ -150,7 +201,7 @@
     const order = orderValues();
     $('#cash-field').hidden = order.payment_method !== 'cash'; $('#cash-tendered').required = order.payment_method === 'cash';
     $('#reference-field').hidden = order.payment_method !== 'gcash';
-    if ($('#payment-reference')) $('#payment-reference').required = false; // Automatic if left empty
+    if ($('#payment-reference')) $('#payment-reference').required = order.payment_method === 'gcash';
     $('#payment-summary').textContent = 'Estimated total ' + money(order.total) + '. The server confirms the final total.';
   }
   function newOrder(c) {
@@ -170,6 +221,7 @@
     if (!$('#address-confirm').checked) throw Error('Confirm the delivery address.');
     if (!value.items.length || value.items.some(item => !item.name || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 999 || !Number.isSafeInteger(item.price_centavos) || item.price_centavos <= 0) || !Number.isSafeInteger(value.fee_centavos) || value.fee_centavos < 0 || !Number.isSafeInteger(value.total) || value.total <= 0) throw Error('Add valid items, quantities, prices and delivery fee.');
     if (value.payment_method === 'cash' && (!Number.isSafeInteger(value.cash_tendered_centavos) || value.cash_tendered_centavos < value.total)) throw Error('Customer cash must cover the total.');
+    if (value.payment_method === 'gcash' && !value.payment_reference) throw Error('GCash payment reference is required.');
     const { total, ...fields } = value;
     const payload = { customer_id: form.dataset.customer, ...fields, notes: $('#order-notes').value.trim() };
     const fingerprint = JSON.stringify(payload);
@@ -246,10 +298,34 @@
       if (quiet !== true) notice('Saved records loaded.');
     } catch (error) { notice('Could not load records: ' + error.message); }
   }
+  async function readPinFileIntoForm(file) {
+    if (!file) return;
+    let data;
+    try { data = JSON.parse(await file.text()); } catch { alert('That file is not a valid JuKi pin file.'); return; }
+    const ok = data && data.app === 'juflow' && data.type === 'customer-pin';
+    const lat = data?.lat, lng = data?.lng, landmark = data?.landmark || data?.customer?.landmark || '';
+    if (!ok || typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      alert('That file is not a valid JuKi pin file.');
+      return;
+    }
+    $('#lat').value = lat.toFixed(6);
+    $('#lng').value = lng.toFixed(6);
+    if (landmark && !$('#landmark').value.trim()) $('#landmark').value = landmark;
+    if (data.customer?.address && !$('#address').value.trim()) $('#address').value = data.customer.address;
+    if (window.setCustomerPin) window.setCustomerPin(lat, lng);
+    const acc = data.accuracy_m ? ` ~${Math.round(data.accuracy_m)}m` : '';
+    const gpsResult = $('#gps-result');
+    if (gpsResult) gpsResult.textContent = `📍 Pin loaded: ${lat.toFixed(6)}, ${lng.toFixed(6)}${acc}. Save customer to apply.`;
+  }
+
   if ($('#customer-list')) {
     $('#customer-search').oninput = customerList; $('#new-customer').onclick = () => editCustomer();
-    $('#import-pin').onclick = () => { $('#pin-file').value = ''; $('#pin-file').click(); };
+    if ($('#import-pin')) $('#import-pin').onclick = () => { $('#pin-file').value = ''; $('#pin-file').click(); };
     $('#pin-file').onchange = event => { readPinFile(event.target.files[0]).catch(error => notice(error.message)); };
+    if ($('#import-pin-into-form')) {
+      $('#import-pin-into-form').onclick = () => { $('#form-pin-file').value = ''; $('#form-pin-file').click(); };
+      $('#form-pin-file').onchange = event => { readPinFileIntoForm(event.target.files[0]); };
+    }
     $('#pin-form').onsubmit = event => { event.preventDefault(); submit(event.currentTarget, savePin); };
     $('#customer-list').onclick = event => { const button = event.target.closest('[data-customer]'); if (button) { state.selected = button.dataset.customer; customerList(); loadHistory(); } };
     document.querySelectorAll('[data-close]').forEach(button => { button.onclick = () => { if (button.closest('form')?.dataset.busy !== 'true') button.closest('dialog').close(); }; });

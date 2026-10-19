@@ -31,22 +31,43 @@
     }
   }
 
+  function openLandmarkViewer(c) {
+    const dlg = document.getElementById('rider-landmark-dialog');
+    const img = document.getElementById('rider-landmark-img');
+    const caption = document.getElementById('rider-landmark-caption');
+    if (!dlg || !img) {
+      if (c?.landmark_photo) window.open(c.landmark_photo, '_blank');
+      return;
+    }
+    img.src = c.landmark_photo || '';
+    if (caption) {
+      const parts = [c.address, c.landmark ? `Landmark: ${c.landmark}` : null].filter(Boolean);
+      caption.textContent = parts.join(' • ') || 'No landmark description provided.';
+    }
+    dlg.showModal();
+  }
+
   function customerHtml(c) {
     c = c || {};
     const hasPin = Number.isFinite(c.lat) && Number.isFinite(c.lng);
     const hasLandmark = Boolean(c.landmark && c.landmark.trim());
+    const hasPhoto = Boolean(c.landmark_photo);
     const isCompleted = Boolean(c.address && hasPin && hasLandmark);
     return `
       <strong>${esc(c.name || 'Customer')}</strong>
       ${c.phone ? `<br><a href="tel:${esc(c.phone)}" class="tel-link">${esc(c.phone)}</a>` : ''}
       ${c.address ? `<br><small>📍 ${esc(c.address)}</small>` : ''}
       ${c.landmark ? `<br><small style="color:var(--text-muted);">Landmark: ${esc(c.landmark)}</small>` : ''}
-      <div style="margin-top:6px;">
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
         ${isCompleted
           ? '<span class="badge badge-success" style="font-size:11px;padding:3px 8px;">✓ Address Completed &amp; Pinned</span>'
           : hasPin
             ? '<span class="badge badge-info" style="font-size:11px;padding:3px 8px;">📍 Pinned (No landmark)</span>'
             : '<span class="badge badge-warning" style="font-size:11px;padding:3px 8px;white-space:normal;line-height:1.3;display:inline-block;">⚠️ Wala pang pin location - coordinate kay cashier/admin</span>'
+        }
+        ${hasPhoto
+          ? '<span class="badge badge-info" style="font-size:11px;padding:3px 8px;">📷 Has photo</span>'
+          : '<span class="badge" style="font-size:11px;padding:3px 8px;opacity:0.65;background:#ecefe9;">📷 No photo</span>'
         }
       </div>`;
   }
@@ -118,6 +139,39 @@
     link('📍 Google Maps', `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}`);
     link('🚗 Waze', hasPin ? `https://waze.com/ul?ll=${encodeURIComponent(dest)}&navigate=yes` : `https://waze.com/ul?q=${encodeURIComponent(dest)}&navigate=yes`);
     nav.appendChild(row);
+
+    // Landmark & Photo section
+    const landmarkCard = add('<h3>Landmark & Photo</h3>');
+    if (c.landmark) {
+      const p = document.createElement('p');
+      p.style.cssText = 'margin:6px 0 10px;font-size:14px;';
+      p.innerHTML = `<strong>Landmark:</strong> ${esc(c.landmark)}`;
+      landmarkCard.appendChild(p);
+    } else {
+      const p = document.createElement('p');
+      p.style.cssText = 'margin:6px 0 10px;font-size:13px;color:var(--text-muted);';
+      p.textContent = 'No landmark description saved.';
+      landmarkCard.appendChild(p);
+    }
+    const photoRow = document.createElement('div');
+    photoRow.style.cssText = 'margin-top:10px;';
+    if (c.landmark_photo) {
+      const photoBtn = document.createElement('button');
+      photoBtn.type = 'button';
+      photoBtn.className = 'app-btn secondary full';
+      photoBtn.innerHTML = '📷 View landmark photo';
+      photoBtn.onclick = () => openLandmarkViewer(c);
+      photoRow.appendChild(photoBtn);
+    } else {
+      const noPhotoBtn = document.createElement('button');
+      noPhotoBtn.type = 'button';
+      noPhotoBtn.className = 'app-btn secondary full';
+      noPhotoBtn.disabled = true;
+      noPhotoBtn.style.cssText = 'opacity:0.55;cursor:not-allowed;';
+      noPhotoBtn.innerHTML = '📷 No landmark photo available';
+      photoRow.appendChild(noPhotoBtn);
+    }
+    landmarkCard.appendChild(photoRow);
 
     const loc = add(`<h3>Location sharing</h3>
       <p style="color:var(--text-muted);font-size:14px;margin:8px 0;">Share your location while delivering so the admin can follow along.</p>

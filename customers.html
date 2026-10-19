@@ -210,10 +210,9 @@
             <p>Save their details once. Make the next order easier.</p>
           </div>
           <div class="heading-actions">
-            <button class="secondary" id="import-pin" type="button">Import rider pin file</button>
-            <input id="pin-file" type="file" accept=".json,application/json" hidden />
             <button class="primary" id="new-customer">+ New customer</button>
           </div>
+          <input id="pin-file" type="file" accept=".json,application/json" hidden />
         </section>
         <p class="local-banner">
           Customer profiles and orders are saved to the shared service. Orders
@@ -283,9 +282,15 @@
                 <button id="map-search-btn" type="button" class="secondary" style="white-space:nowrap;">Search location</button>
               </div>
               <p id="map-provider" class="map-help"></p>
-              <button id="capture-gps" type="button" class="secondary">
-                Use my GPS here
-              </button>
+              <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                <button id="capture-gps" type="button" class="secondary">
+                  Use my GPS here
+                </button>
+                <button id="import-pin-into-form" type="button" class="secondary">
+                  Import pin file
+                </button>
+                <input id="form-pin-file" type="file" accept=".json,application/json" hidden />
+              </div>
               <p id="gps-result" class="map-help" role="status"></p>
               <div
                 id="customer-location-map"

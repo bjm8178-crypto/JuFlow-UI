@@ -39,10 +39,16 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
     const aggregate = stages => db.collection('sales').aggregate(stages).toArray();
     const topStage = matchCond => [
       { $match: matchCond },
-      { $sort: { sale_time: 1 } },
       { $unwind: '$items' },
-      { $group: { _id: { $ifNull: [{ $toString: '$items.product_id' }, '$items.name'] }, name: { $last: '$items.name' }, units: { $sum: '$items.quantity' }, revenue: { $sum: { $multiply: ['$items.quantity', '$items.price_centavos'] } } } },
-      { $project: { _id: '$name', units: 1, revenue: 1 } },
+      { $match: { 'items.quantity': { $gt: 0 } } },
+      { $group: {
+          _id: { $toLower: { $trim: { input: { $ifNull: ['$items.name', { $toString: '$items.product_id' }] } } } },
+          name: { $first: '$items.name' },
+          units: { $sum: '$items.quantity' },
+          revenue: { $sum: { $multiply: ['$items.quantity', '$items.price_centavos'] } }
+        }
+      },
+      { $project: { _id: { $ifNull: ['$name', '$_id'] }, units: 1, revenue: 1 } },
       { $sort: { units: -1, _id: 1 } },
       { $match: { units: { $gt: 0 } } },
       { $limit: 6 }
@@ -59,6 +65,28 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
       aggregate(topStage(filter(req, range.weekStart, range.weekEnd))),
       aggregate(topStage(filter(req, range.monthStart, range.monthEnd)))
     ]);
+
+    const monthMap = new Map(monthlySales.map(m => [m._id, m]));
+    const sixMonthsList = [];
+    const endBusinessDate = businessDate(new Date(range.end.getTime() - 1000));
+    const [currYear, currMonth] = endBusinessDate.slice(0, 7).split('-').map(Number);
+    for (let i = 5; i >= 0; i--) {
+      let y = currYear;
+      let m = currMonth - i;
+      while (m <= 0) { m += 12; y -= 1; }
+      const key = `${y}-${String(m).padStart(2, '0')}`;
+      sixMonthsList.push(monthMap.get(key) || { _id: key, total_centavos: 0, transaction_count: 0, units_sold: 0 });
+    }
+
+    const dayMap = new Map(days.map(d => [d._id, d]));
+    const sevenDaysList = [];
+    const endDateObj = new Date(range.weekEnd.getTime() - 1000);
+    for (let i = 6; i >= 0; i--) {
+      const dObj = new Date(endDateObj.getTime() - i * 86400000);
+      const key = businessDate(dObj);
+      sevenDaysList.push(dayMap.get(key) || { _id: key, total_centavos: 0 });
+    }
+
     res.json({
       total_centavos: 0, food_centavos: 0, fee_centavos: 0, transaction_count: 0, units_sold: 0,
       ...totals[0],
@@ -69,8 +97,8 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
       top_products_weekly: weeklyTop,
       top_products_monthly: monthlyTop,
       by_payment: payments,
-      last_seven_days: days,
-      by_month: monthlySales
+      last_seven_days: sevenDaysList,
+      by_month: sixMonthsList
     });
   } catch (error) { next(error); }
 });

@@ -91,4 +91,5 @@ if (el('map-search-btn')) el('map-search-btn').onclick = searchAddress;
 if (el('map-search-input')) el('map-search-input').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); searchAddress(); } };
 
 el('customer-dialog').addEventListener('close',()=>{generation++;el('capture-gps').disabled=false;});
+window.setCustomerPin=choose;
 })();
