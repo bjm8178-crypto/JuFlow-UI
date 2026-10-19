@@ -77,12 +77,23 @@ app.use((req, res, next) => {
 // HEALTH CHECK
 // ============================================================================
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  let dbSalesInfo = null;
+  try {
+    const db = getDb();
+    const count = await db.collection('sales').countDocuments({ voided_at: null, is_test_sale: { $ne: true } });
+    const sample = await db.collection('sales').find({ voided_at: null, is_test_sale: { $ne: true } }).project({ transaction_id: 1, sale_time: 1, total_centavos: 1, items: 1, source: 1, is_test_sale: 1 }).sort({ sale_time: -1 }).limit(5).toArray();
+    dbSalesInfo = { count, sample };
+  } catch (e) {
+    dbSalesInfo = { error: e.message };
+  }
   res.json({
     status: 'ok',
     mode: 'juflow-api-v1',
+    version: '2026.10.20-v2',
     timestamp: new Date().toISOString(),
-    timezone: process.env.TZ || 'Asia/Manila'
+    timezone: process.env.TZ || 'Asia/Manila',
+    sales_info: dbSalesInfo
   });
 });
 
