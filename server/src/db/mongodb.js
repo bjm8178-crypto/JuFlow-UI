@@ -1,7 +1,10 @@
-import { MongoClient, ObjectId } from 'mongodb';
+import { MongoClient, ObjectId as MongoObjectId } from 'mongodb';
+import * as pgDriver from './postgres.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+export const isPostgres = () => Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URI || process.env.PG_URL);
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 const DB_NAME = process.env.DB_NAME || 'juflow';
@@ -13,6 +16,10 @@ let db;
  * Connect to MongoDB
  */
 export async function connect() {
+  if (isPostgres()) {
+    console.log('📦 Using PostgreSQL database driver');
+    return await pgDriver.connect();
+  }
   try {
     if (db) {
       return db;
@@ -46,6 +53,9 @@ export async function connect() {
  * Get database instance
  */
 export function getDb() {
+  if (isPostgres()) {
+    return pgDriver.getDb();
+  }
   if (!db) {
     throw new Error('Database not connected. Call connect() first.');
   }
@@ -53,6 +63,9 @@ export function getDb() {
 }
 
 export async function withTransaction(work) {
+  if (isPostgres()) {
+    return await pgDriver.withTransaction(work);
+  }
   const database = getDb();
   const session = client.startSession();
   try {
@@ -66,6 +79,9 @@ export async function withTransaction(work) {
 }
 
 export async function readiness() {
+  if (isPostgres()) {
+    return await pgDriver.readiness();
+  }
   const database = getDb();
   await database.command({ ping: 1 }, { maxTimeMS: 2000 });
   await verifyRequiredIndexes(database);
@@ -73,9 +89,12 @@ export async function readiness() {
 }
 
 /**
- * Close MongoDB connection
+ * Close database connection
  */
 export async function close() {
+  if (isPostgres()) {
+    return await pgDriver.close();
+  }
   if (client) {
     await client.close();
     client = null;
@@ -217,10 +236,13 @@ export async function verifyRequiredIndexes(database) {
  * Helper to convert string ID to ObjectId
  */
 export function toObjectId(id) {
+  if (isPostgres()) {
+    return pgDriver.toObjectId(id);
+  }
   try {
-    if (id instanceof ObjectId) return id;
+    if (id instanceof MongoObjectId) return id;
     if (typeof id !== 'string' || !/^[a-f\d]{24}$/i.test(id)) return null;
-    return new ObjectId(id);
+    return new MongoObjectId(id);
   } catch (error) {
     return null;
   }
@@ -230,10 +252,9 @@ export function toObjectId(id) {
  * Helper to generate timestamps
  */
 export function timestamps() {
-  const now = new Date();
-  return {
-    created_at: now,
-    updated_at: now
+  return isPostgres() ? pgDriver.timestamps() : {
+    created_at: new Date(),
+    updated_at: new Date()
   };
 }
 
@@ -241,9 +262,10 @@ export function timestamps() {
  * Helper to update timestamp
  */
 export function updateTimestamp() {
-  return {
+  return isPostgres() ? pgDriver.updateTimestamp() : {
     updated_at: new Date()
   };
 }
 
+const ObjectId = MongoObjectId;
 export { ObjectId };

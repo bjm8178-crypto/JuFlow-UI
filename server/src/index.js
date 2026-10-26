@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { connect, close, readiness } from './db/mongodb.js';
+import { connect, close, readiness, isPostgres } from './db/mongodb.js';
 import { productionConfig, validateStartup } from './lib/config.js';
 import { bootstrap } from './db/bootstrap.js';
 import { cashierTokenAuth } from './middleware/cashier.js';
@@ -194,7 +194,7 @@ async function startServer() {
       console.log('\n🚀 Juki API Server');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`   Database: MongoDB`);
+      console.log(`   Database: ${isPostgres() ? 'PostgreSQL' : 'MongoDB'}`);
       console.log(`   Port: ${PORT}`);
       console.log(`   URL: http://localhost:${PORT}`);
       console.log(`   Network: http://0.0.0.0:${PORT} (all interfaces)`);
