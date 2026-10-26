@@ -21,7 +21,9 @@ services:
         value: juflow
       - key: TRUST_PROXY          # Vercel rewrite + Render proxy = 2 hops
         value: "2"
-      - key: MONGODB_URI          # MongoDB Atlas connection string (set in the Render dashboard)
+      - key: DATABASE_URL         # PostgreSQL connection string (Supabase, Neon, or Render Postgres)
+        sync: false
+      - key: MONGODB_URI          # MongoDB Atlas connection string (fallback if DATABASE_URL is not set)
         sync: false
       - key: CORS_ORIGINS         # your Vercel URL, e.g. https://juflow.vercel.app (no trailing slash)
         sync: false
