@@ -917,6 +917,10 @@ export class PostgresDatabase {
     this.client = client;
   }
 
+  query(sql, params) {
+    return (this.client || getPool()).query(sql, params);
+  }
+
   collection(name) {
     return new PostgresCollection(name, this.client);
   }

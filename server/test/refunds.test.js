@@ -127,9 +127,24 @@ async function fixture(t, initial = [original()]) {
     }
     throw new Error('fixture retries exhausted');
   };
-  const deps = { database, transaction, clock: () => now, notifier: async (db, sale) => {
-    if (state.notifierFails) throw new Error('notifier failed'); state.notified.push(sale);
-  } };
+  const deps = {
+    database,
+    transaction,
+    clock: () => now,
+    notifier: async (db, sale) => {
+      if (state.notifierFails) throw new Error('notifier failed'); state.notified.push(sale);
+    },
+    queryTodayTotals: async (criteria) => {
+      const selected = state.rows.filter(row => matches(row, criteria));
+      const totals = { total_centavos: 0, food_centavos: 0, fee_centavos: 0, transaction_count: 0, units_sold: 0 };
+      for (const row of selected) {
+        for (const key of ['total_centavos', 'food_centavos', 'fee_centavos']) totals[key] += row[key] ?? 0;
+        totals.transaction_count += row.source === 'refund' ? 0 : 1;
+        totals.units_sold += (row.items || []).reduce((sum, item) => sum + item.quantity, 0);
+      }
+      return totals;
+    }
+  };
   const app = express(); app.use(express.json());
   const routes = [['post', '/:id/refund', 'createRefundSaleHandler'], ['post', '/tap', 'createTapSaleHandler'],
     ['post', '/untap', 'createUntapSaleHandler'], ['get', '/today', 'createTodaySalesHandler'], ['get', '/today/list', 'createTodaySalesListHandler'], ['post', '/', 'createRecordSaleHandler']];

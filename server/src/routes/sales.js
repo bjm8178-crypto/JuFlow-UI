@@ -89,12 +89,13 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
     });
   } catch (error) { next(error); }
 });
-export function createTodaySalesHandler({ database = getDb, clock = () => new Date() } = {}) {
+export function createTodaySalesHandler({ database = getDb, clock = () => new Date(), queryTodayTotals } = {}) {
   return async (req, res, next) => {
     try {
       const now = clock(), { start, end } = reportRange({}, now);
       const match = filter(req, start, end);
-      const summary = await todayTotals(match, database());
+      const queryFn = queryTodayTotals || todayTotals;
+      const summary = await queryFn(match, database());
       res.json({
         date: businessDate(now),
         timezone: 'Asia/Manila',
@@ -110,11 +111,12 @@ export function createTodaySalesHandler({ database = getDb, clock = () => new Da
 }
 router.get('/today', authenticate, requireRole('admin', 'cashier'), createTodaySalesHandler());
 
-export function createCountsSalesHandler({ database = getDb, clock = () => new Date() } = {}) {
+export function createCountsSalesHandler({ database = getDb, clock = () => new Date(), queryDishCounts } = {}) {
   return async (req, res, next) => {
     try {
       const now = clock(), { start, end } = reportRange({}, now);
-      const rows = await dishCounts({ start, end, sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true } }, database());
+      const queryFn = queryDishCounts || dishCounts;
+      const rows = await queryFn({ start, end, sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true } }, database());
       res.json({ date: businessDate(now), counts: Object.fromEntries(rows.map(row => [row._id, row.quantity])) });
     } catch (error) { next(error); }
   };

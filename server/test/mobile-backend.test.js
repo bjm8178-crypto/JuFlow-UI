@@ -72,7 +72,32 @@ async function salesFixture(t, rows = []) {
   } };
   const app = express();
   app.use(express.json());
-  const dependencies = { database: () => db, clock: () => now, notifier: async (database, sale) => { assert.equal(database, db); if (state.notifierFails) throw new Error('notifier down'); state.notified.push(sale); } };
+  const dependencies = {
+    database: () => db,
+    clock: () => now,
+    notifier: async (database, sale) => { assert.equal(database, db); if (state.notifierFails) throw new Error('notifier down'); state.notified.push(sale); },
+    queryTodayTotals: async (criteria) => {
+      pipelines.push([{ $match: criteria }]);
+      const selected = rows.filter(doc => matches(doc, criteria));
+      const total = { total_centavos: 0, food_centavos: 0, fee_centavos: 0, transaction_count: 0, units_sold: 0 };
+      const payments = new Map();
+      for (const row of selected) {
+        total.total_centavos += row.total_centavos;
+        total.food_centavos += row.food_centavos ?? row.total_centavos;
+        total.fee_centavos += row.fee_centavos ?? 0;
+        if (row.source !== 'refund') total.transaction_count++;
+        total.units_sold += (row.items || []).reduce((sum, item) => sum + item.quantity, 0);
+        const payment = payments.get(row.payment_method) ?? { _id: row.payment_method, total_centavos: 0, transaction_count: 0 };
+        payment.total_centavos += row.total_centavos;
+        if (row.source !== 'refund') payment.transaction_count++;
+        payments.set(row.payment_method, payment);
+      }
+      return {
+        ...total,
+        by_payment: [...payments.values()].sort((a, b) => a._id.localeCompare(b._id))
+      };
+    }
+  };
   // Retain the real routes' role middleware while replacing only session auth
   // and injecting database/clock into their real final handlers.
   for (const [method, path, handler] of [['get', '/today', createTodaySalesHandler(dependencies)], ['post', '/', createRecordSaleHandler(dependencies)]]) {
