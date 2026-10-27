@@ -4,6 +4,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 import { objectIdString, orderError } from '../lib/order.js';
 import { createOrder, patchNotes } from '../services/fulfillment.js';
 import { setOrderStatus } from '../services/simple-flow.js';
+import { ordersRepo } from '../db/repositories/index.js';
 
 const router = express.Router();
 const oid = value => toObjectId(objectIdString(value, 'id'));
@@ -28,14 +29,14 @@ router.get('/', authenticate, async (req, res, next) => {
     if (filter === 'active') query.status = { $nin: ['delivered', 'cancelled'] };
     else if (filter === 'delivered') query.status = { $in: ['delivered', 'cancelled'] };
     else if (filter !== 'all' || req.user.role_name === 'rider') throw orderError('filter must be active or delivered');
-    res.json(await getDb().collection('orders').find(query, options(req.user)).sort({ created_at: -1 }).limit(200).toArray());
+    res.json(await ordersRepo.find(query, { ...options(req.user), sort: { created_at: -1 }, limit: 200 }));
   } catch (error) { next(error); }
 });
 
 router.get('/:id', authenticate, async (req, res, next) => {
   try {
     allowed(req.user);
-    const order = await getDb().collection('orders').findOne({ _id: oid(req.params.id) }, options(req.user));
+    const order = await ordersRepo.findById(req.params.id, options(req.user));
     if (!order) throw orderError('Order not found', 404, 'not_found');
     res.json(order);
   } catch (error) { next(error); }

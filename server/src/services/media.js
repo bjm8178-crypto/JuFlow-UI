@@ -29,7 +29,13 @@ export function parseImageBody(body) {
 
 export async function decodeLandmark(body) {
   const { bytes, format } = parseImageBody(body);
-  const { default: sharp } = await import('sharp');
+  let sharp;
+  try {
+    ({ default: sharp } = await import('sharp'));
+  } catch (error) {
+    console.error('sharp failed to load (native image library missing on this server):', error.message);
+    fail(503, 'image_processor_unavailable', 'Image processing is unavailable on the server');
+  }
   try {
     const image = sharp(bytes, { failOn: 'warning', limitInputPixels: MAX_INPUT_PIXELS, animated: false });
     const metadata = await image.metadata();

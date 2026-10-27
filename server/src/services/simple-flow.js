@@ -5,10 +5,12 @@ import { validateSale } from '../lib/sale.js';
 import { ORDER_STATUSES, DELIVERY_STATUS_FOR, canChangeStatus } from '../lib/order-state.js';
 import { appendAudit } from './audit.js';
 import { notifySale } from './notifications.js';
+import { ordersRepo, deliveriesRepo, salesRepo } from '../db/repositories/index.js';
 
 // A delivered order becomes exactly one sale (unique index: sales.order_id).
 async function recordOrderSale(db, session, order, actor, now) {
-  if (await db.collection('sales').findOne({ order_id: order._id }, { session })) return null;
+  const existing = await salesRepo.findByOrderId(order._id, db);
+  if (existing) return null;
   const { sale: clean, digest } = validateSale({
     transaction_id: `order:${order._id}`,
     order_id: String(order._id),
@@ -31,8 +33,7 @@ async function recordOrderSale(db, session, order, actor, now) {
     occurred_at: now, sale_time: now, received_at: now, created_at: now, updated_at: now,
     recorded_by: new ObjectId(actor.id), recorded_actor: actor.id, recorded_role: actor.role_name, verification: null
   };
-  const { insertedId } = await db.collection('sales').insertOne(sale, { session });
-  const saved = { ...sale, _id: insertedId };
+  const saved = await salesRepo.create(sale, db, { session });
   await notifySale(db, saved, { session });
   return saved;
 }
@@ -41,7 +42,7 @@ export async function setOrderStatus({ transaction, orderId, status, actor }) {
   if (!ORDER_STATUSES.includes(status)) throw orderError('status must be preparing, on_the_way, delivered or cancelled');
   const id = new ObjectId(objectIdString(orderId, 'id'));
   return transaction(async (db, session) => {
-    const order = await db.collection('orders').findOne({ _id: id }, { session });
+    const order = await ordersRepo.findById(id, {}, db);
     if (!order) throw orderError('Order not found', 404, 'not_found');
     const check = canChangeStatus(order.status, status, actor.role_name);
     if (!check.allowed) throw orderError(check.reason, 409, 'conflict');
@@ -54,28 +55,31 @@ export async function setOrderStatus({ transaction, orderId, status, actor }) {
       delivered: { delivered_at: now, completed_at: now, payment_status: 'paid' },
       cancelled: { cancelled_at: now }
     }[status];
-    const updated = await db.collection('orders').findOneAndUpdate(
-      { _id: id, status: order.status },
+    const updated = await ordersRepo.updateStatus(
+      id,
+      order.status,
       {
-        $set: {
-          status, delivery_status: DELIVERY_STATUS_FOR[status],
-          preparation_status: status === 'cancelled' ? 'cancelled' : status === 'preparing' ? 'preparing' : 'ready',
-          ...stamp, updated_at: now
-        },
-        $inc: { version: 1 }
+        status,
+        delivery_status: DELIVERY_STATUS_FOR[status],
+        preparation_status: status === 'cancelled' ? 'cancelled' : status === 'preparing' ? 'preparing' : 'ready',
+        ...stamp
       },
-      { session, returnDocument: 'after' }
+      db,
+      { session }
     );
     if (!updated) throw orderError('Order changed; refresh and try again', 409, 'conflict');
 
-    await db.collection('deliveries').updateOne({ order_id: id }, {
-      $set: {
-        status: DELIVERY_STATUS_FOR[status], updated_at: now,
+    await deliveriesRepo.updateByOrderId(
+      id,
+      {
+        status: DELIVERY_STATUS_FOR[status],
+        updated_at: now,
         ...(status === 'on_the_way' ? { pickup_time: now } : {}),
         ...(status === 'delivered' ? { delivery_time: now } : {})
       },
-      $inc: { version: 1 }
-    }, { session });
+      db,
+      { session }
+    );
 
     const sale = status === 'delivered' ? await recordOrderSale(db, session, updated, actor, now) : null;
     await appendAudit(db, session, {

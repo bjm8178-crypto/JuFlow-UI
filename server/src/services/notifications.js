@@ -1,9 +1,12 @@
+import { notificationsRepo } from '../db/repositories/index.js';
+
 export async function notifySale(db, sale, { session } = {}) {
   const refund = sale.source === 'refund';
   const units = (sale.items || []).reduce((sum, item) => sum + Math.abs(item.quantity), 0);
   const peso = '₱' + (Math.abs(sale.total_centavos) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const where = { order: 'Delivery', walk_in: 'Walk-in', device: 'Walk-in', refund: 'Return' }[sale.source] || 'Sale';
-  await db.collection('notifications').insertOne({
+
+  const doc = {
     type: refund ? 'refund' : 'sale',
     title: refund ? 'Items returned' : 'Something sold',
     body: `${where} · ${units} item${units === 1 ? '' : 's'} · ${peso}`,
@@ -12,5 +15,11 @@ export async function notifySale(db, sale, { session } = {}) {
     total_centavos: sale.total_centavos,
     read_by: [],
     created_at: new Date()
-  }, { session });
+  };
+
+  if (db && typeof db.collection === 'function' && typeof db.query !== 'function') {
+    return await db.collection('notifications').insertOne(doc, { session });
+  }
+
+  await notificationsRepo.create(doc, db);
 }

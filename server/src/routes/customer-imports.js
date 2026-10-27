@@ -4,6 +4,12 @@ import { ObjectId } from 'mongodb';
 import { getDb, withTransaction } from '../db/mongodb.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { shape, text, validateCustomer, invalid } from '../lib/customer.js';
+import {
+  customersRepo,
+  integrityGuardsRepo,
+  customerImportReportsRepo,
+  auditEventsRepo
+} from '../db/repositories/index.js';
 
 export function normalizedPhone(value) {
   let phone = (value || '').replace(/[^0-9]/g, '');
@@ -40,11 +46,11 @@ export function validateImportRows(rows) {
 
 export async function previewImport(db, rows, session) {
   const existingPhones = new Map(), existingMessengers = new Map();
-  const cursor = db.collection('customers').find({}, { session, projection: { _id: 1, phone: 1, messenger: 1 } });
-  for await (const customer of cursor) {
+  const customerList = await customersRepo.find({}, {}, db);
+  for (const customer of customerList) {
     const phone = normalizedPhone(customer.phone), messenger = normalizedMessenger(customer.messenger);
-    if (phone) existingPhones.set(phone, String(customer._id));
-    if (messenger) existingMessengers.set(messenger, String(customer._id));
+    if (phone) existingPhones.set(phone, String(customer._id || customer.id));
+    if (messenger) existingMessengers.set(messenger, String(customer._id || customer.id));
   }
   const phones = new Map(), messengers = new Map();
   return rows.map(row => {
@@ -75,8 +81,8 @@ export async function commitImport(db, session, body, actor) {
   const digest = hash({ rows, selected_indices: indices });
   const reportId = hash({ actor: String(actor.id), key });
   // Serializes import dedup checks and commits, including retries for different keys.
-  await db.collection('integrity_guards').updateOne({ _id: 'customer_imports' }, { $inc: { revision: 1 } }, { session, upsert: true });
-  const previous = await db.collection('customer_import_reports').findOne({ _id: reportId }, { session });
+  await integrityGuardsRepo.increment('customer_imports', db, { session });
+  const previous = await customerImportReportsRepo.findById(reportId, db, { session });
   if (previous) {
     if (previous.digest !== digest) fail(409, 'idempotency_conflict', 'This import key was already used for different rows or selection');
     return { ...previous, replayed: true };
@@ -88,7 +94,7 @@ export async function commitImport(db, session, body, actor) {
   const mapping = [];
   for (const row of chosen) {
     const customerId = new ObjectId();
-    await db.collection('customers').insertOne({ _id: customerId, ...row.customer, created_at: now, updated_at: now, import_report_id: reportId }, { session });
+    await customersRepo.create({ _id: customerId, ...row.customer, created_at: now, updated_at: now, import_report_id: reportId }, db, { session });
     mapping.push({ row_index: row.index, reference: row.reference, customer_id: String(customerId) });
   }
   const report = {
@@ -96,12 +102,12 @@ export async function commitImport(db, session, body, actor) {
     created_by: String(actor.id), created_at: now, imported_count: mapping.length,
     mapping, skipped: rows.filter(row => !indices.includes(row.index)).map(row => ({ row_index: row.index, reference: row.reference, reason: row.error ? 'invalid' : 'not_selected' }))
   };
-  await db.collection('customer_import_reports').insertOne(report, { session });
-  await db.collection('audit_events').insertOne({
+  await customerImportReportsRepo.create(report, db, { session });
+  await auditEventsRepo.create({
     event_id: 'customer_import:' + reportId, entity_type: 'customer_import', entity_id: reportId,
     action: 'commit', performed_by: String(actor.id), performed_role: actor.role_name,
     created_at: now, report_id: reportId, imported_count: mapping.length, mapping
-  }, { session });
+  }, db, { session });
   return report;
 }
 

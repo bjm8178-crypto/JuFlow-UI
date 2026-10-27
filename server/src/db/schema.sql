@@ -311,3 +311,27 @@ CREATE TABLE IF NOT EXISTS rider_locations (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_rider_locations_rider_occurred ON rider_locations(rider_id, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS fulfillment_events (
+  id VARCHAR(100) PRIMARY KEY,
+  request_digest VARCHAR(100),
+  result JSONB,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS customer_import_reports (
+  id VARCHAR(100) PRIMARY KEY,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS product_images (
+  id VARCHAR(64) PRIMARY KEY,
+  content_type VARCHAR(100),
+  data BYTEA,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);

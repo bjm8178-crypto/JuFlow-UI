@@ -1,7 +1,7 @@
 import express from 'express';
 import { getDb } from '../db/mongodb.js';
-import { ObjectId } from 'mongodb';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { menuRepo, productsRepo, ObjectId } from '../db/repositories/index.js';
 
 export const phToday = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
 const router = express.Router();
@@ -10,12 +10,8 @@ const router = express.Router();
 router.get('/today', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const db = getDb(), date = phToday();
-    const menu = await db.collection('daily_menu').findOne({ date });
-    const ids = menu?.product_ids || [];
-    const dishes = ids.length ? await db.collection('products')
-      .find({ _id: { $in: ids }, is_active: { $ne: false }, is_available: { $ne: false } })
-      .project({ name: 1, price_centavos: 1, photo_path: 1 }).sort({ name: 1 }).toArray() : [];
-    res.json({ date, dishes });
+    const result = await menuRepo.getTodayDishes(date, db);
+    res.json(result);
   } catch (e) { next(e); }
 });
 
@@ -28,12 +24,10 @@ router.put('/today', authenticate, requireRole('admin'), async (req, res, next) 
     }
     const ids = [...new Set(raw)].map(i => new ObjectId(i));
     const db = getDb();
-    const found = await db.collection('products').countDocuments({ _id: { $in: ids }, is_active: { $ne: false } });
+    const found = await productsRepo.count({ id: { $in: ids }, is_active: { $ne: false } }, db);
     if (found !== ids.length) return res.status(400).json({ error: 'validation_error', message: 'Unknown or deleted dish in list' });
     const date = phToday();
-    await db.collection('daily_menu').updateOne({ date },
-      { $set: { date, product_ids: ids, updated_by: req.user.id, updated_at: new Date() }, $setOnInsert: { created_at: new Date() } },
-      { upsert: true });
+    await menuRepo.upsertToday(date, ids, req.user.id, db);
     res.json({ date, product_ids: ids });
   } catch (e) { next(e); }
 });

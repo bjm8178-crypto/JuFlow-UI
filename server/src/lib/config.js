@@ -18,7 +18,8 @@ export function productionConfig(env = process.env) {
 export function validateStartup(env = process.env) {
   const config = productionConfig(env);
   if (config.production) {
-    if (!env.MONGODB_URI || !env.DB_NAME) throw new Error('Explicit MONGODB_URI and DB_NAME are required in production');
+    const hasPostgres = Boolean(env.DATABASE_URL || env.POSTGRES_URI || env.PG_URL);
+    if (!hasPostgres && (!env.MONGODB_URI || !env.DB_NAME)) throw new Error('DATABASE_URL (PostgreSQL) or explicit MONGODB_URI and DB_NAME are required in production');
     if (!config.origins.length) throw new Error('CORS_ORIGINS is required for production cookie writes');
     if (!env.TRUST_PROXY) throw new Error('Explicit verified TRUST_PROXY is required in production');
   }

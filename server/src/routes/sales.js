@@ -5,7 +5,19 @@ import { validateSale } from '../lib/sale.js';
 import { businessDate, reportRange } from '../lib/business-date.js';
 import { integer, objectIdString, orderError, text } from '../lib/order.js';
 import { notifySale } from '../services/notifications.js';
-import { todayTotals, byPayment, byHour, byDay, byMonth, topProducts, dishCounts } from '../db/sales-queries.js';
+import {
+  salesRepo,
+  productsRepo,
+  menuRepo,
+  todayTotals,
+  byPayment,
+  byHour,
+  byDay,
+  byMonth,
+  topProducts,
+  dishCounts,
+  extractId
+} from '../db/repositories/index.js';
 
 const router = express.Router();
 function filter(req, start, end) {
@@ -18,15 +30,19 @@ router.get('/', authenticate, requireRole('admin'), async (req, res, next) => {
     const { start, end } = reportRange(req.query);
     const page = Number(req.query.page ?? 1), limit = Number(req.query.limit ?? 10);
     if (!Number.isSafeInteger(page) || page < 1 || page > 100000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) return res.status(400).json({ error: 'validation_error', message: 'Invalid pagination' });
-    const query = filter(req, start, end), collection = getDb().collection('sales');
-    const [items, total] = await Promise.all([collection.find(query).sort({ sale_time: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).toArray(), collection.countDocuments(query)]);
+    const query = filter(req, start, end);
+    const db = getDb();
+    const [items, total] = await Promise.all([
+      salesRepo.find(query, { sort: { sale_time: -1, _id: -1 }, skip: (page - 1) * limit, limit }, db),
+      salesRepo.count(query, db)
+    ]);
     res.json({ items, total, page, limit });
   } catch (error) { next(error); }
 });
 router.get('/export.csv', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
     const { start, end } = reportRange(req.query);
-    const rows = await getDb().collection('sales').find(filter(req, start, end)).sort({ sale_time: -1, _id: -1 }).limit(10001).toArray();
+    const rows = await salesRepo.find(filter(req, start, end), { sort: { sale_time: -1, _id: -1 }, limit: 10001 }, getDb());
     if (rows.length > 10000) return res.status(400).json({ error: 'export_too_large', message: 'Narrow date range to at most 10000 transactions' });
     const cell = value => '"' + String(value ?? '').replace(/^[=+@-]/, "' $&").replaceAll('"', '""') + '"';
     const fields = ['transaction_id', 'order_id', 'sale_time', 'received_at', 'source', 'payment_method', 'food_centavos', 'fee_centavos', 'total_centavos', 'recorded_by'];
@@ -131,10 +147,11 @@ export function createSinceSalesHandler({ database = getDb, clock = () => new Da
       const after = typeof req.query.after === 'string' ? new Date(req.query.after) : new Date(NaN);
       if (!Number.isFinite(after.getTime())) throw orderError('after must be a valid date');
       const from = new Date(Math.max(now.getTime() - 86400000, after.getTime() - 10000));
-      const items = await database().collection('sales').find(
+      const items = await salesRepo.find(
         { received_at: { $gt: from }, voided_at: null, is_test_sale: { $ne: true } },
-        { projection: { items: 1, total_centavos: 1, payment_method: 1, received_at: 1 } }
-      ).sort({ received_at: 1, _id: 1 }).limit(50).toArray();
+        { sort: { received_at: 1, _id: 1 }, limit: 50 },
+        database()
+      );
       res.json({ cursor: items.length === 50 ? new Date(items.at(-1).received_at).toISOString() : now.toISOString(), items });
     } catch (error) { next(error); }
   };
@@ -156,7 +173,7 @@ export function createTapSaleHandler({ database = getDb, clock = () => new Date(
       const method = req.body.payment_method ?? 'cash';
       if (!['cash', 'gcash'].includes(method)) throw orderError('payment_method must be cash or gcash');
       const now = clock(), db = database(), transactionId = `tap:${keyId}`;
-      const findExisting = () => db.collection('sales').findOne({ transaction_id: transactionId });
+      const findExisting = () => salesRepo.findByTransactionId(transactionId, db);
       const respond = existing => {
         if (existing.tap !== true || existing.source !== 'walk_in' || String(existing.recorded_by) !== String(req.user.id) ||
             existing.items?.length !== 1 || String(existing.items[0].product_id) !== String(productId) || existing.payment_method !== method) {
@@ -166,10 +183,10 @@ export function createTapSaleHandler({ database = getDb, clock = () => new Date(
       };
       const existing = await findExisting();
       if (existing) return respond(existing);
-      const menu = await db.collection('daily_menu').findOne({ date: businessDate(now) });
+      const menu = await menuRepo.findByDate(businessDate(now), db);
       if (!menu?.product_ids?.some(id => String(id) === String(productId))) throw orderError('Product is not on the current menu', 400, 'invalid_product');
-      const product = await db.collection('products').findOne({ _id: productId, is_active: { $ne: false }, is_available: { $ne: false } });
-      if (!product) throw orderError('Product is unavailable', 400, 'invalid_product');
+      const product = await productsRepo.findById(productId, db);
+      if (!product || product.is_active === false || product.is_available === false) throw orderError('Product is unavailable', 400, 'invalid_product');
       const price = integer(product.price_centavos, 'product price', 1, 10000000);
       const sale = { transaction_id: transactionId, items: [{ product_id: productId, name: text(product.name, 'product name'), quantity: 1, price_centavos: price }],
         food_centavos: price, fee_centavos: 0, total_centavos: price, payment_method: method,
@@ -177,10 +194,10 @@ export function createTapSaleHandler({ database = getDb, clock = () => new Date(
         source: 'walk_in', tap: true, recorded_by: toObjectId(req.user.id), recorded_actor: req.user.id, recorded_role: req.user.role_name,
         sale_time: now, occurred_at: now, received_at: now, voided_at: null, created_at: now, updated_at: now };
       try {
-        const result = await db.collection('sales').insertOne(sale);
-        res.status(201).json({ ...sale, _id: result.insertedId });
+        const saved = await salesRepo.create(sale, db);
+        res.status(201).json(saved);
       } catch (error) {
-        if (error.code === 11000) { const winner = await findExisting(); if (winner) return respond(winner); }
+        if (error.code === 11000 || error.code === '23505') { const winner = await findExisting(); if (winner) return respond(winner); }
         throw error;
       }
     } catch (error) { next(error); }
@@ -203,21 +220,17 @@ export function createUntapSaleHandler({ database = getDb, transaction = withTra
       let result;
       try {
         result = await transaction(async (db, session) => {
-          const existing = await db.collection('sales').findOne({ void_id: keyId }, { session });
+          const clientOrDb = db;
+          const existing = await salesRepo.findByVoidId(keyId, clientOrDb, { session });
           if (existing) return replay(existing);
-          const sale = await db.collection('sales').findOneAndUpdate(
-            { sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true }, tap: true, source: 'walk_in',
-              'items.product_id': { $in: [productId, String(productId)] } },
-            { $set: { voided_at: now, voided_by: toObjectId(req.user.id), void_id: keyId, ...updateTimestamp(), updated_at: now } },
-            { session, sort: { sale_time: -1, _id: -1 }, returnDocument: 'after' }
-          );
+          const sale = await salesRepo.voidTapSale(keyId, req.user.id, productId, start, end, clientOrDb, { session });
           if (!sale) throw orderError('No tap sale to undo for this product today', 409, 'nothing_to_undo');
           return { sale, duplicate: false };
         });
       } catch (error) {
-        if (error.code !== 11000) throw error;
+        if (error.code !== 11000 && error.code !== '23505') throw error;
         // The failed transaction rolls back any second sale selected by this undo.
-        const winner = await database().collection('sales').findOne({ void_id: keyId });
+        const winner = await salesRepo.findByVoidId(keyId, database());
         if (!winner) throw error;
         result = replay(winner);
       }
@@ -231,9 +244,11 @@ router.post('/untap', authenticate, requireRole('admin', 'cashier'), createUntap
 router.get('/today/list', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const { start, end } = reportRange({}, new Date());
-    const rows = await getDb().collection('sales')
-      .find({ sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true } })
-      .sort({ sale_time: -1, _id: -1 }).limit(200).toArray();
+    const rows = await salesRepo.find(
+      { sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true } },
+      { sort: { sale_time: -1, _id: -1 }, limit: 200 },
+      getDb()
+    );
     res.json(rows.map(({ digest, ...sale }) => sale));
   } catch (error) { next(error); }
 });
@@ -268,15 +283,15 @@ export function createRefundSaleHandler({ database = getDb, transaction = withTr
       let outcome;
       try {
         outcome = await transaction(async (db, session) => {
-          const sales = db.collection('sales');
-          const replay = await sales.findOne({ transaction_id }, { session });
+          const clientOrDb = db;
+          const replay = await salesRepo.findByTransactionId(transaction_id, clientOrDb, { session });
           if (replay) return { saved: replay, duplicate: true };
-          const sale = await sales.findOne({ _id: saleId }, { session });
+          const sale = await salesRepo.findById(saleId, clientOrDb, { session });
           if (!sale || sale.source === 'refund') throw Object.assign(new Error('Sale not found'), { status: 404, code: 'not_found' });
           if (req.user.role_name === 'cashier' && sale.sale_time < reportRange({}, now).start) {
             throw Object.assign(new Error("Only today's sales can be changed. Ask the admin."), { status: 403, code: 'too_old' });
           }
-          const previous = await sales.find({ refund_of: saleId }, { session }).toArray();
+          const previous = await salesRepo.findByRefundOf(saleId, clientOrDb, { session });
           const returned = new Map();
           for (const r of previous) for (const line of r.refund_lines || []) returned.set(line.index, (returned.get(line.index) || 0) + line.quantity);
           const lines = input.items.map(({ index, quantity }) => {
@@ -302,14 +317,14 @@ export function createRefundSaleHandler({ database = getDb, transaction = withTr
             occurred_at: now, sale_time: now, received_at: now, ...timestamps(),
             recorded_by: toObjectId(req.user.id), recorded_actor: req.user.id, recorded_role: req.user.role_name
           };
-          const { insertedId } = await sales.insertOne(refund, { session });
+          const saved = await salesRepo.create(refund, clientOrDb, { session });
           // Touch the source sale so concurrent refunds of it conflict.
-          await sales.updateOne({ _id: saleId }, { $set: { has_refunds: true }, $inc: { refund_version: 1 } }, { session });
-          return { saved: { ...refund, _id: insertedId }, duplicate: false };
+          await salesRepo.markHasRefunds(saleId, clientOrDb, { session });
+          return { saved, duplicate: false };
         });
       } catch (error) {
-        if (error.code === 11000) {
-          const winner = await database().collection('sales').findOne({ transaction_id });
+        if (error.code === 11000 || error.code === '23505') {
+          const winner = await salesRepo.findByTransactionId(transaction_id, database());
           if (winner) return res.status(200).json({ ...winner, duplicate: true });
         }
         throw error;
@@ -324,7 +339,7 @@ router.post('/:id/refund', authenticate, requireRole('admin', 'cashier'), create
 
 router.get('/:id', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
-    const sale = await getDb().collection('sales').findOne({ _id: toObjectId(req.params.id) });
+    const sale = await salesRepo.findById(req.params.id, getDb());
     if (!sale) return res.status(404).json({ error: 'not_found', message: 'Sale not found' });
     res.json(sale);
   } catch (error) { next(error); }
@@ -338,7 +353,7 @@ export function createRecordSaleHandler({ database = getDb, clock = () => new Da
       if (clean.transaction_id.startsWith('tap:')) return res.status(400).json({ error: 'tap_required', message: 'Tap IDs require the tap endpoint' });
       const db = database();
       const source = req.cashierDevice ? 'device' : 'walk_in';
-      const findExisting = () => db.collection('sales').findOne({ transaction_id: clean.transaction_id });
+      const findExisting = () => salesRepo.findByTransactionId(clean.transaction_id, db);
       // Globally unique IDs must not let another actor read or claim a sale on replay.
       const respond = existing => existing.digest === digest && existing.source === source &&
         (req.cashierDevice ? existing.recorded_by == null && existing.recorded_actor === req.user.id : String(existing.recorded_by) === req.user.id)
@@ -349,12 +364,11 @@ export function createRecordSaleHandler({ database = getDb, clock = () => new Da
       const occurred = clean.occurred_at ? new Date(clean.occurred_at) : now;
       const sale = { ...clean, digest, recorded_by: req.cashierDevice ? null : toObjectId(req.user.id), recorded_actor: req.user.id, recorded_role: req.user.role_name, source, sale_time: occurred, occurred_at: occurred, received_at: now, ...timestamps() };
       try {
-        const result = await db.collection('sales').insertOne(sale);
-        const saved = { ...sale, _id: result.insertedId };
+        const saved = await salesRepo.create(sale, db);
         try { await notifier(db, saved); } catch (error) { console.error('Notification failed:', error.message); }
         res.status(201).json(saved);
       } catch (error) {
-        if (error.code === 11000) { const winner = await findExisting(); if (winner) return respond(winner); }
+        if (error.code === 11000 || error.code === '23505') { const winner = await findExisting(); if (winner) return respond(winner); }
         throw error;
       }
     } catch (error) { next(error); }

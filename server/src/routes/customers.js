@@ -2,6 +2,7 @@ import express from 'express';
 import { getDb, toObjectId, timestamps, updateTimestamp } from '../db/mongodb.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { validateCustomer, validId, listOptions } from '../lib/customer.js';
+import { customersRepo, ordersRepo } from '../db/repositories/index.js';
 
 const router = express.Router();
 
@@ -17,11 +18,11 @@ router.get('/', authenticate, requireRole('admin', 'cashier'), async (req, res, 
       query = { ...query, $or: [{ name: re }, { phone: re }, { messenger: re }] };
     }
 
-    const customers = await db.collection('customers')
-      .find(query)
-      .sort({ name: 1 })
-      .skip(skip).limit(limit)
-      .toArray();
+    const customers = await customersRepo.find(
+      query,
+      { sort: { name: 1 }, skip, limit },
+      db
+    );
 
     res.json(customers);
   } catch (error) {
@@ -34,9 +35,7 @@ router.get('/:id', authenticate, requireRole('admin', 'cashier'), async (req, re
   try {
     validId(req.params.id);
     const db = getDb();
-    const customer = await db.collection('customers').findOne({
-      _id: toObjectId(req.params.id)
-    });
+    const customer = await customersRepo.findById(req.params.id, db);
     if (!customer) {
       return res.status(404).json({ error: 'not_found', message: 'Customer not found' });
     }
@@ -52,12 +51,11 @@ router.get('/:id/orders', authenticate, requireRole('admin', 'cashier'), async (
     validId(req.params.id);
     const { limit, skip } = listOptions(req.query);
     const db = getDb();
-    const customerId = toObjectId(req.params.id);
-    const orders = await db.collection('orders')
-      .find({ customer_id: customerId })
-      .sort({ created_at: -1 })
-      .skip(skip).limit(limit)
-      .toArray();
+    const orders = await ordersRepo.find(
+      { customer_id: req.params.id },
+      { sort: { created_at: -1 }, skip, limit },
+      db
+    );
     res.json(orders);
   } catch (error) {
     next(error);
@@ -68,23 +66,14 @@ router.get('/:id/orders', authenticate, requireRole('admin', 'cashier'), async (
 router.post('/', authenticate, requireRole('admin', 'cashier'), async (req, res, next) => {
   try {
     const updates = validateCustomer(req.body);
-
     const db = getDb();
-    // Same phone number already on an active customer? Stop duplicates (a shared number can be forced with ?allow_duplicate=1).
+
     const digits = String(updates.phone || '').replace(/\D/g, '');
     if (digits.length >= 7 && req.query.allow_duplicate !== '1') {
-      const same = await db.collection('customers').findOne({
-        is_active: { $ne: false },
-        phone: { $regex: new RegExp('^\\D*' + digits.split('').join('\\D*') + '\\D*$') }
-      });
-      if (same) return res.status(409).json({ error: 'duplicate_customer', message: `This phone number is already saved for ${same.name}.`, customer_id: String(same._id) });
+      const same = await customersRepo.findDuplicatePhone(digits, db);
+      if (same) return res.status(409).json({ error: 'duplicate_customer', message: `This phone number is already saved for ${same.name}.`, customer_id: String(same._id || same.id) });
     }
-    const result = await db.collection('customers').insertOne({
-      ...updates,
-      ...timestamps()
-    });
-
-    const customer = await db.collection('customers').findOne({ _id: result.insertedId });
+    const customer = await customersRepo.create(updates, db);
     res.status(201).json(customer);
   } catch (error) {
     next(error);
@@ -96,14 +85,9 @@ router.patch('/:id', authenticate, requireRole('admin', 'cashier'), async (req, 
   try {
     validId(req.params.id);
     const updates = validateCustomer(req.body, true);
-
     const db = getDb();
-    const result = await db.collection('customers').findOneAndUpdate(
-      { _id: toObjectId(req.params.id) },
-      { $set: { ...updates, ...updateTimestamp() } },
-      { returnDocument: 'after' }
-    );
 
+    const result = await customersRepo.update(req.params.id, updates, db);
     if (!result) {
       return res.status(404).json({ error: 'not_found', message: 'Customer not found' });
     }
@@ -113,22 +97,16 @@ router.patch('/:id', authenticate, requireRole('admin', 'cashier'), async (req, 
   }
 });
 
-// DELETE /api/customers/:id - Admin only. The customer is archived (is_active:false), not erased,
-// so past orders, sales and reports keep their customer details.
+// DELETE /api/customers/:id - Admin only
 router.delete('/:id', authenticate, requireRole('admin'), async (req, res, next) => {
   try {
     validId(req.params.id);
     const db = getDb();
-    const now = new Date();
-    const result = await db.collection('customers').findOneAndUpdate(
-      { _id: toObjectId(req.params.id), is_active: { $ne: false } },
-      { $set: { is_active: false, deleted_at: now, deleted_by: req.user.id, updated_at: now } },
-      { returnDocument: 'after' }
-    );
+    const result = await customersRepo.delete(req.params.id, db, req.user.id);
     if (!result) {
       return res.status(404).json({ error: 'not_found', message: 'Customer not found' });
     }
-    res.json({ deleted: true, _id: String(result._id) });
+    res.json({ deleted: true, _id: String(result._id || result.id) });
   } catch (error) {
     next(error);
   }
