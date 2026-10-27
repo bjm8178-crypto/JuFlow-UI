@@ -759,3 +759,13 @@ dialog[open]{animation:dialogIn .22s var(--ease)}
 .live-chart .trend-dot.peak{fill:var(--orange)}
 .live-chart .trend-hit{fill:transparent;cursor:pointer}
 .live-chart .trend-hit:hover + .trend-dot{fill:var(--orange)}
+
+
+/* ---- Weekly (by day) and Daily (by hour) bar charts ---- */
+.live-chart .bar-rect{fill:var(--orange);fill-opacity:.55}
+.live-chart .bar-rect.peak{fill-opacity:1}
+.live-chart .bar-rect.zero{fill:var(--border);fill-opacity:1}
+.live-chart .bar-value{font-size:11px;font-weight:700;fill:var(--text)}
+.live-chart .trend-axis-label.sub{font-size:10px;opacity:.8}
+.live-chart .bar-hit{fill:transparent;cursor:pointer}
+.live-chart .bar-hit:hover{fill:var(--orange);fill-opacity:.06}

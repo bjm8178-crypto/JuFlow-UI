@@ -140,39 +140,95 @@
     resizeTimer = setTimeout(() => { if (lastData) updateView(lastData); }, 200);
   });
 
-  function renderWeeklyChart(sevenDays) {
-    const days = sevenDays || [];
-    const values = days.map(d => d.total_centavos || 0);
+  // Shared bar chart (SVG) with a peso y-axis, so bar heights can be compared across days / hours.
+  // items: [{ label, sub?, value (centavos), tip, today? }]
+  function renderBarChart(items, opts) {
+    const chart = el('sales-chart');
+    const values = items.map(i => i.value || 0);
     const peak = Math.max(...values, 0);
-    const max = Math.max(peak, 1);
     const peakIdx = peak > 0 ? values.indexOf(peak) : -1;
-    el('sales-chart').innerHTML =
-      '<div class="month-bars" role="img" aria-label="Weekly sales">' +
-      days.map((d, i) => {
-        const dateObj = new Date(d._id + 'T00:00:00Z');
-        const dayLabel = dateObj.toLocaleDateString('en-PH', { weekday: 'short', month: 'numeric', day: 'numeric', timeZone: 'UTC' });
-        const val = d.total_centavos || 0;
-        const heightPct = val ? Math.max(10, Math.round((val / max) * 100)) : 0;
-        return `<div class="month-column${i === peakIdx && peak > 0 ? ' peak' : ''}" title="${d._id} · ${money(val)}"><div class="month-bar${val ? '' : ' zero'}" style="height:${heightPct}%"><span class="sr-only">${dayLabel} ${money(val)}</span></div><small>${dayLabel}</small></div>`;
-      }).join('') +
-      '</div>' +
-      `<p class="chart-peak">${peakIdx >= 0 && peak > 0 ? `Peak day: <strong>${days[peakIdx]._id}</strong> · ${money(peak)}` : 'No sales recorded this week.'}</p>`;
+    const sum = values.reduce((s, v) => s + v, 0);
+
+    const W = Math.max(300, Math.floor(chart.clientWidth - 40) || 640);
+    const H = W < 480 ? 240 : 290;
+    const pad = { l: 52, r: 14, t: 24, b: opts.twoLineLabels ? 44 : 32 };
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const yMax = niceMax(peak);
+    const y = v => pad.t + ih * (1 - v / yMax);
+    const f = n => n.toFixed(1);
+    const slot = iw / items.length;
+    const bw = Math.min(slot * 0.66, 64);
+
+    const grid = [0, 1, 2, 3, 4, 5].map(i => {
+      const v = yMax * i / 5;
+      return `<line class="trend-grid" x1="${pad.l}" x2="${W - pad.r}" y1="${f(y(v))}" y2="${f(y(v))}"/><text class="trend-axis-label" x="${pad.l - 8}" y="${f(y(v) + 4)}" text-anchor="end">${axisMoney(v)}</text>`;
+    }).join('');
+
+    const bars = items.map((it, i) => {
+      const v = values[i];
+      const cx = pad.l + slot * i + slot / 2;
+      const h = v > 0 ? Math.max(3, ih * v / yMax) : 0;
+      const top = pad.t + ih - h;
+      const rect = v > 0
+        ? `<rect class="bar-rect${i === peakIdx ? ' peak' : ''}" x="${f(cx - bw / 2)}" y="${f(top)}" width="${f(bw)}" height="${f(h)}" rx="4"/>`
+        : `<rect class="bar-rect zero" x="${f(cx - bw / 2)}" y="${f(pad.t + ih - 2)}" width="${f(bw)}" height="2" rx="1"/>`;
+      const showValue = v > 0 && (items.length <= 8 || i === peakIdx);
+      const valueLabel = showValue ? `<text class="bar-value" x="${f(cx)}" y="${f(top - 6)}" text-anchor="middle">${axisMoney(v)}</text>` : '';
+      const lbl = it.label ? `<text class="trend-axis-label${it.today ? ' today' : ''}" x="${f(cx)}" y="${H - (opts.twoLineLabels ? 24 : 10)}" text-anchor="middle">${E(it.label)}</text>` : '';
+      const sub = it.sub ? `<text class="trend-axis-label sub${it.today ? ' today' : ''}" x="${f(cx)}" y="${H - 9}" text-anchor="middle">${E(it.sub)}</text>` : '';
+      const hit = `<rect class="bar-hit" x="${f(pad.l + slot * i)}" y="${pad.t}" width="${f(slot)}" height="${f(ih)}"><title>${E(it.tip)} · ${money(v)}</title></rect>`;
+      return `<g>${rect}${valueLabel}${lbl}${sub}${hit}</g>`;
+    }).join('');
+
+    chart.innerHTML =
+      `<svg class="trend-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${E(opts.aria)}">${grid}${bars}</svg>` +
+      `<p class="chart-peak">${peakIdx >= 0 ? `${opts.peakText(items[peakIdx])} · ${money(peak)} · ${opts.totalText}: <strong>${money(sum)}</strong>` : E(opts.emptyText)}</p>`;
   }
 
-  function renderDailyChart(byHour) {
-    const values = Array(24).fill(0);
-    (byHour || []).forEach(h => { values[h._id] = h.total || 0; });
-    const peak = Math.max(...values);
-    const max = Math.max(peak, 1);
-    const peakHour = peak > 0 ? values.indexOf(peak) : -1;
-    el('sales-chart').innerHTML =
-      '<div class="hour-bars" role="img" aria-label="Hourly sales">' +
-      values.map((v, h) =>
-        `<div class="hour-column${h === peakHour && peak > 0 ? ' peak' : ''}" title="${hourLabel(h)} · ${money(v)}"><div class="hour-bar${v ? '' : ' zero'}" style="height:${v ? Math.max(4, v / max * 100) : 0}%"><span class="sr-only">${hourLabel(h)} ${money(v)}</span></div><small>${h % 4 === 0 ? (h % 12 || 12) + (h < 12 ? 'a' : 'p') : ''}</small></div>`
-      ).join('') +
-      '</div>' +
-      `<p class="chart-peak">${peakHour >= 0 && peak > 0 ? `Peak hour: <strong>${hourLabel(peakHour)}</strong> · ${money(peak)}` : 'No sales recorded for this day yet.'}</p>`;
+  function weekdayShort(key) {
+    return new Date(key + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
   }
+  function weekdayLong(key) {
+    return new Date(key + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  }
+
+  // Weekly: one bar per day for the last 7 days, to see which days sell best.
+  function renderWeeklyChart(sevenDays) {
+    const days = sevenDays || [];
+    const items = days.map((d, i) => ({
+      label: weekdayShort(d._id),
+      sub: shortDay(d._id),
+      value: d.total_centavos || 0,
+      tip: weekdayLong(d._id),
+      today: i === days.length - 1
+    }));
+    renderBarChart(items, {
+      twoLineLabels: true,
+      aria: 'Sales per day, last 7 days',
+      peakText: it => `Best day: <strong>${E(it.tip)}</strong>`,
+      totalText: '7-day total',
+      emptyText: 'No sales recorded in the last 7 days.'
+    });
+  }
+
+  // Daily: one bar per hour of the day (12 AM - 11 PM), to see the busiest hours.
+  function renderDailyChart(byHour) {
+    const totals = Array(24).fill(0);
+    (byHour || []).forEach(h => { if (h._id >= 0 && h._id < 24) totals[h._id] = h.total || 0; });
+    const items = totals.map((v, h) => ({
+      label: h % 3 === 0 ? (h % 12 || 12) + (h < 12 ? 'a' : 'p') : '',
+      value: v,
+      tip: hourLabel(h) + ' – ' + hourLabel((h + 1) % 24)
+    }));
+    renderBarChart(items, {
+      aria: 'Sales per hour of the day',
+      peakText: it => `Busiest hour: <strong>${E(it.tip)}</strong>`,
+      totalText: 'Total',
+      emptyText: 'No sales recorded for this date yet.'
+    });
+  }
+
+
 
   function renderTopProducts(list, periodName) {
     const topList = list || [];
@@ -208,15 +264,15 @@
       renderMonthlyChart(d);
       renderTopProducts(monthlyList, 'this month');
     } else if (currentTab === 'weekly') {
-      if (el('chart-title')) el('chart-title').textContent = 'Weekly sales overview';
-      if (el('chart-sub')) el('chart-sub').textContent = 'Past 7 days · Philippine time';
+      if (el('chart-title')) el('chart-title').textContent = 'Sales by day';
+      if (el('chart-sub')) el('chart-sub').textContent = 'Last 7 days, to see your best days · Philippine time';
       if (el('top-title')) el('top-title').textContent = 'Top-selling food (Weekly)';
       if (el('top-sub')) el('top-sub').textContent = 'Ranked by units sold this week';
       renderWeeklyChart(d.last_seven_days);
       renderTopProducts(weeklyList, 'this week');
     } else {
-      if (el('chart-title')) el('chart-title').textContent = 'Daily sales by hour';
-      if (el('chart-sub')) el('chart-sub').textContent = '12 AM to 11 PM · Philippine time';
+      if (el('chart-title')) el('chart-title').textContent = 'Sales by hour';
+      if (el('chart-sub')) el('chart-sub').textContent = 'Busiest hours, 12 AM to 11 PM · Philippine time';
       if (el('top-title')) el('top-title').textContent = 'Top-selling food (Daily)';
       if (el('top-sub')) el('top-sub').textContent = 'Ranked by quantity on the selected day';
       renderDailyChart(d.by_hour);
