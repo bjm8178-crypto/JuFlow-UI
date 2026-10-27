@@ -69,6 +69,9 @@ export function updateTimestamp() {
 }
 
 export function getConnectionString() {
+  if (process.env.DATABASE_URL_TEST && (process.env.NODE_ENV === 'test' || !process.env.DATABASE_URL)) {
+    return process.env.DATABASE_URL_TEST;
+  }
   return process.env.DATABASE_URL || process.env.POSTGRES_URI || process.env.PG_URL || 'postgresql://postgres:postgres@localhost:5432/juflow';
 }
 
@@ -444,9 +447,25 @@ export class PostgresCollection {
     cleanDoc.updated_at = cleanDoc.updated_at || new Date();
 
     const validCols = await getTableColumns(this.name, this.client || getPool());
-    const cols = ['id', 'data', 'created_at', 'updated_at'];
-    const placeholders = ['$1', '$2::jsonb', '$3', '$4'];
-    const params = [String(id), JSON.stringify(cleanDoc), cleanDoc.created_at, cleanDoc.updated_at];
+    const cols = ['id'];
+    const placeholders = ['$1'];
+    const params = [String(id)];
+
+    if (validCols.has('data')) {
+      cols.push('data');
+      params.push(JSON.stringify(cleanDoc));
+      placeholders.push(`$${params.length}::jsonb`);
+    }
+    if (validCols.has('created_at')) {
+      cols.push('created_at');
+      params.push(cleanDoc.created_at);
+      placeholders.push(`$${params.length}`);
+    }
+    if (validCols.has('updated_at')) {
+      cols.push('updated_at');
+      params.push(cleanDoc.updated_at);
+      placeholders.push(`$${params.length}`);
+    }
 
     for (const [k, v] of Object.entries(cleanDoc)) {
       if (['id', 'data', 'created_at', 'updated_at'].includes(k)) continue;
@@ -456,7 +475,9 @@ export class PostgresCollection {
       placeholders.push(`$${params.length}`);
     }
 
-    const onConflictSets = ['data = EXCLUDED.data', 'updated_at = EXCLUDED.updated_at'];
+    const onConflictSets = [];
+    if (validCols.has('data')) onConflictSets.push('data = EXCLUDED.data');
+    if (validCols.has('updated_at')) onConflictSets.push('updated_at = EXCLUDED.updated_at');
     for (const col of cols) {
       if (['id', 'data', 'created_at', 'updated_at'].includes(col)) continue;
       onConflictSets.push(`${col} = EXCLUDED.${col}`);

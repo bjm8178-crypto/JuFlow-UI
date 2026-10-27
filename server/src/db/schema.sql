@@ -261,7 +261,8 @@ CREATE TABLE IF NOT EXISTS audit_events (
   actor VARCHAR(100),
   details JSONB DEFAULT '{}'::jsonb,
   data JSONB DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_event_unique ON audit_events(event_id) WHERE event_id IS NOT NULL;
 
@@ -272,12 +273,14 @@ CREATE TABLE IF NOT EXISTS media_files (
   size INT,
   data JSONB DEFAULT '{}'::jsonb,
   metadata JSONB DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS integrity_guards (
   id VARCHAR(64) PRIMARY KEY,
   revision INT DEFAULT 0,
   data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
