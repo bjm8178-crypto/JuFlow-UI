@@ -111,14 +111,18 @@ CREATE TABLE IF NOT EXISTS riders (
   id VARCHAR(64) PRIMARY KEY,
   user_id VARCHAR(64),
   name VARCHAR(150),
+  full_name VARCHAR(150),
   phone VARCHAR(50),
   vehicle_type VARCHAR(50),
   vehicle_plate VARCHAR(50),
+  plate_no VARCHAR(50),
   status VARCHAR(50) DEFAULT 'offline',
+  is_available BOOLEAN DEFAULT TRUE,
   is_active BOOLEAN DEFAULT TRUE,
   last_lat DOUBLE PRECISION,
   last_lng DOUBLE PRECISION,
   last_location_at TIMESTAMPTZ,
+  last_location JSONB,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -271,10 +275,17 @@ CREATE TABLE IF NOT EXISTS media_files (
   filename VARCHAR(255),
   content_type VARCHAR(100),
   size INT,
+  bytes BYTEA,
   data JSONB DEFAULT '{}'::jsonb,
   metadata JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version INT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  applied_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS integrity_guards (

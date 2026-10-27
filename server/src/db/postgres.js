@@ -101,15 +101,11 @@ export function getPool() {
   return pool;
 }
 
-export async function initSchema(client = getPool()) {
-  const schemaPath = path.join(__dirname, 'schema.sql');
-  if (fs.existsSync(schemaPath)) {
-    const sql = fs.readFileSync(schemaPath, 'utf8');
-    await client.query(sql);
-  }
-  // Ensure essential columns exist on all tables
-  try {
-    await client.query(`
+export const MIGRATIONS = [
+  {
+    version: 1,
+    name: '001_initial_backfill_orders_deliveries',
+    sql: `
       ALTER TABLE IF EXISTS counters ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE IF EXISTS counters ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
       ALTER TABLE IF EXISTS counters ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
@@ -140,8 +136,68 @@ export async function initSchema(client = getPool()) {
         status = COALESCE(data->>'status', status),
         notes = COALESCE(notes, data->>'notes')
       WHERE data IS NOT NULL AND data != '{}'::jsonb;
+    `
+  },
+  {
+    version: 2,
+    name: '002_riders_columns_and_sync',
+    sql: `
+      ALTER TABLE IF EXISTS riders ADD COLUMN IF NOT EXISTS full_name VARCHAR(150);
+      ALTER TABLE IF EXISTS riders ADD COLUMN IF NOT EXISTS plate_no VARCHAR(50);
+      ALTER TABLE IF EXISTS riders ADD COLUMN IF NOT EXISTS is_available BOOLEAN DEFAULT TRUE;
+      ALTER TABLE IF EXISTS riders ADD COLUMN IF NOT EXISTS last_location JSONB DEFAULT NULL;
+      UPDATE riders SET
+        full_name = COALESCE(full_name, name),
+        plate_no = COALESCE(plate_no, vehicle_plate)
+      WHERE full_name IS NULL OR plate_no IS NULL;
+    `
+  },
+  {
+    version: 3,
+    name: '003_media_files_bytes',
+    sql: `
+      ALTER TABLE IF EXISTS media_files ADD COLUMN IF NOT EXISTS bytes BYTEA;
+    `
+  }
+];
+
+export async function runMigrations(client = getPool()) {
+  await client.query('BEGIN');
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        applied_at TIMESTAMPTZ DEFAULT NOW()
+      );
     `);
-  } catch (_) {}
+
+    const res = await client.query('SELECT version FROM schema_migrations ORDER BY version ASC');
+    const applied = new Set(res.rows.map(r => r.version));
+
+    for (const m of MIGRATIONS) {
+      if (!applied.has(m.version)) {
+        await client.query(m.sql);
+        await client.query(
+          'INSERT INTO schema_migrations (version, name, applied_at) VALUES ($1, $2, NOW())',
+          [m.version, m.name]
+        );
+      }
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  }
+}
+
+export async function initSchema(client = getPool()) {
+  const schemaPath = path.join(__dirname, 'schema.sql');
+  if (fs.existsSync(schemaPath)) {
+    const sql = fs.readFileSync(schemaPath, 'utf8');
+    await client.query(sql);
+  }
+  await runMigrations(client);
 }
 
 export async function connect() {
@@ -200,6 +256,33 @@ export function normalizeRow(row) {
       doc[k] = Number(doc[k]);
     }
   }
+
+  // Rider field compatibility mapping
+  if (doc.full_name !== undefined || doc.name !== undefined) {
+    const fn = doc.full_name || doc.name;
+    doc.full_name = fn;
+    doc.name = fn;
+  }
+  if (doc.plate_no !== undefined || doc.vehicle_plate !== undefined) {
+    const pn = doc.plate_no || doc.vehicle_plate;
+    doc.plate_no = pn;
+    doc.vehicle_plate = pn;
+  }
+  if (doc.is_available === undefined && doc.status !== undefined) {
+    doc.is_available = doc.status !== 'offline';
+  } else if (doc.is_available !== undefined) {
+    doc.is_available = Boolean(doc.is_available);
+  }
+  if (!doc.last_location && (row.last_lat !== undefined && row.last_lat !== null)) {
+    doc.last_location = {
+      lat: row.last_lat,
+      lng: row.last_lng,
+      occurred_at: row.last_location_at
+    };
+  } else if (doc.last_location && typeof doc.last_location === 'string') {
+    try { doc.last_location = JSON.parse(doc.last_location); } catch (_) {}
+  }
+
   return doc;
 }
 
@@ -210,7 +293,7 @@ const KNOWN_TABLE_COLUMNS = {
   products: new Set(['id', 'category_id', 'name', 'name_key', 'description', 'price_centavos', 'cost_centavos', 'is_available', 'is_active', 'image_url', 'image_data', 'data', 'created_at', 'updated_at']),
   customers: new Set(['id', 'name', 'phone', 'messenger', 'address', 'notes', 'latitude', 'longitude', 'is_active', 'data', 'created_at', 'updated_at']),
   delivery_zones: new Set(['id', 'name', 'fee_centavos', 'estimated_minutes', 'sort_order', 'is_active', 'coordinates', 'data', 'created_at', 'updated_at']),
-  riders: new Set(['id', 'user_id', 'name', 'phone', 'vehicle_type', 'vehicle_plate', 'notes', 'is_available', 'is_active', 'current_lat', 'current_lng', 'last_location_at', 'data', 'created_at', 'updated_at']),
+  riders: new Set(['id', 'user_id', 'name', 'full_name', 'phone', 'vehicle_type', 'vehicle_plate', 'plate_no', 'status', 'notes', 'is_available', 'is_active', 'last_lat', 'last_lng', 'last_location_at', 'last_location', 'current_lat', 'current_lng', 'data', 'created_at', 'updated_at']),
   orders: new Set(['id', 'order_number', 'order_seq', 'idempotency_key', 'customer_id', 'customer', 'items', 'subtotal_centavos', 'fee_centavos', 'total_centavos', 'cash_tendered_centavos', 'change_centavos', 'payment_method', 'gcash_reference', 'status', 'notes', 'pricing_actor', 'cashier_id', 'rider_id', 'delivery', 'data', 'created_at', 'updated_at']),
   deliveries: new Set(['id', 'order_id', 'rider_id', 'status', 'notes', 'fee_centavos', 'delivery_zone_id', 'dropoff_lat', 'dropoff_lng', 'picked_up_at', 'delivered_at', 'data', 'created_at', 'updated_at']),
   sales: new Set(['id', 'transaction_id', 'order_id', 'void_id', 'event_id', 'sale_time', 'received_at', 'source', 'payment_method', 'items', 'food_centavos', 'fee_centavos', 'total_centavos', 'cash_tendered_centavos', 'gcash_reference', 'recorded_by', 'is_test_sale', 'voided_at', 'digest', 'data', 'created_at', 'updated_at']),
@@ -221,7 +304,7 @@ const KNOWN_TABLE_COLUMNS = {
   audit_events: new Set(['id', 'event_id', 'entity_type', 'entity_id', 'action', 'actor_id', 'actor_role', 'payload', 'data', 'created_at', 'updated_at']),
   roles: new Set(['id', 'name', 'description', 'permissions', 'data', 'created_at', 'updated_at']),
   integrity_guards: new Set(['id', 'revision', 'data', 'created_at', 'updated_at']),
-  media_files: new Set(['id', 'filename', 'mime_type', 'size', 'path', 'data', 'created_at', 'updated_at'])
+  media_files: new Set(['id', 'filename', 'mime_type', 'content_type', 'size', 'bytes', 'metadata', 'path', 'data', 'created_at', 'updated_at'])
 };
 
 function hasColumn(tableName, col) {
@@ -375,12 +458,8 @@ export class PostgresCollection {
   async findOne(filter = {}, options = {}) {
     const { where, params } = parseFilter(filter, [], this.name);
     const sql = `SELECT * FROM ${this.name} WHERE ${where} LIMIT 1`;
-    try {
-      const res = await this._query(sql, params);
-      return normalizeRow(res.rows[0]);
-    } catch (e) {
-      return null;
-    }
+    const res = await this._query(sql, params);
+    return normalizeRow(res.rows[0]);
   }
 
   find(filter = {}, options = {}) {
@@ -483,10 +562,14 @@ export class PostgresCollection {
       onConflictSets.push(`${col} = EXCLUDED.${col}`);
     }
 
+    const conflictClause = onConflictSets.length > 0
+      ? `ON CONFLICT (id) DO UPDATE SET ${onConflictSets.join(', ')}`
+      : 'ON CONFLICT (id) DO NOTHING';
+
     const sql = `
       INSERT INTO ${this.name} (${cols.join(', ')})
       VALUES (${placeholders.join(', ')})
-      ON CONFLICT (id) DO UPDATE SET ${onConflictSets.join(', ')}
+      ${conflictClause}
       RETURNING *
     `;
     await this._query(sql, params);
@@ -645,220 +728,7 @@ export class PostgresCollection {
   }
 
   aggregate(pipeline = []) {
-    const self = this;
-    const promise = (async () => {
-      if (self.name === 'sales') {
-        return await self._aggregateSales(pipeline);
-      }
-      const all = await self.find().toArray();
-      return all;
-    })();
-
-    return {
-      then: promise.then.bind(promise),
-      catch: promise.catch.bind(promise),
-      finally: promise.finally.bind(promise),
-      toArray: () => promise
-    };
-  }
-
-  async _aggregateSales(pipeline = []) {
-    const p = getPool();
-    // Parse match condition from first stage if present
-    let matchStage = pipeline.find(s => s.$match)?.$match || {};
-    const { where, params } = parseFilter(matchStage, [], 'sales');
-
-    // 0. Handle $facet (from /api/sales/today)
-    const facetStage = pipeline.find(s => s.$facet)?.$facet;
-    if (facetStage) {
-      const totSql = `
-        SELECT COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos,
-               COALESCE(SUM(COALESCE(food_centavos, total_centavos)), 0)::bigint AS food_centavos,
-               COALESCE(SUM(fee_centavos), 0)::bigint AS fee_centavos,
-               COUNT(CASE WHEN source != 'refund' THEN 1 END)::int AS transaction_count,
-               COALESCE(SUM((
-                 SELECT COALESCE(SUM((item->>'quantity')::int), 0)
-                 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
-               )), 0)::int AS units_sold
-        FROM sales
-        WHERE ${where}
-      `;
-      const totRes = await this._query(totSql, params);
-      const tot = totRes.rows[0] || {};
-
-      const byPaySql = `
-        SELECT payment_method AS _id,
-               COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos,
-               COUNT(CASE WHEN source != 'refund' THEN 1 END)::int AS transaction_count
-        FROM sales
-        WHERE ${where}
-        GROUP BY payment_method
-        ORDER BY _id ASC
-      `;
-      const byPayRes = await this._query(byPaySql, params);
-
-      return [{
-        totals: [{
-          total_centavos: Number(tot.total_centavos || 0),
-          food_centavos: Number(tot.food_centavos || 0),
-          fee_centavos: Number(tot.fee_centavos || 0),
-          transaction_count: Number(tot.transaction_count || 0),
-          units_sold: Number(tot.units_sold || 0)
-        }],
-        by_payment: byPayRes.rows.map(r => ({
-          _id: r._id,
-          total_centavos: Number(r.total_centavos || 0),
-          transaction_count: Number(r.transaction_count || 0)
-        }))
-      }];
-    }
-
-    // 1. Unwind items for Dish Counts or Top Products
-    if (pipeline.some(s => s.$unwind === '$items')) {
-      const groupStage = pipeline.find(s => s.$group)?.$group;
-      const isDishCounts = (groupStage && (
-        groupStage.quantity !== undefined ||
-        (typeof groupStage._id === 'object' && JSON.stringify(groupStage._id).includes('product_id')) ||
-        groupStage._id === '$items.product_id'
-      )) || pipeline.some(s => s.$match && s.$match['items.product_id'] !== undefined);
-
-      if (isDishCounts) {
-        const sql = `
-          SELECT COALESCE(item->>'product_id', p.id) AS _id,
-                 COALESCE(SUM((item->>'quantity')::int), 0)::int AS quantity
-          FROM sales,
-               jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
-          LEFT JOIN products p ON LOWER(TRIM(p.name)) = LOWER(TRIM(item->>'name'))
-          WHERE ${where} AND (item->>'product_id' IS NOT NULL OR p.id IS NOT NULL)
-          GROUP BY COALESCE(item->>'product_id', p.id)
-        `;
-        const res = await this._query(sql, params);
-        return res.rows.map(r => ({
-          _id: String(r._id),
-          quantity: Number(r.quantity)
-        }));
-      }
-
-      // Top Products query:
-      const sql = `
-        SELECT (item->>'name') AS _id,
-               COALESCE(SUM((item->>'quantity')::int), 0)::int AS units,
-               COALESCE(SUM((item->>'quantity')::int * (item->>'price_centavos')::bigint), 0)::bigint AS revenue
-        FROM sales,
-             jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
-        WHERE ${where} AND (item->>'quantity')::int > 0
-        GROUP BY (item->>'name')
-        ORDER BY units DESC, _id ASC
-        LIMIT 6
-      `;
-      const res = await this._query(sql, params);
-      return res.rows.map(r => ({
-        _id: r._id,
-        units: Number(r.units),
-        revenue: Number(r.revenue)
-      }));
-    }
-
-    // 2. Group Totals
-    const groupStage = pipeline.find(s => s.$group)?.$group;
-    if (groupStage) {
-      // By payment method
-      if (groupStage._id === '$payment_method') {
-        const sql = `
-          SELECT payment_method AS _id,
-                 COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos,
-                 COUNT(*)::int AS transaction_count
-          FROM sales
-          WHERE ${where}
-          GROUP BY payment_method
-          ORDER BY total_centavos DESC
-        `;
-        const res = await this._query(sql, params);
-        return res.rows.map(r => ({ ...r, total_centavos: Number(r.total_centavos) }));
-      }
-
-      // By hour
-      if (groupStage._id && typeof groupStage._id === 'object' && groupStage._id.$hour) {
-        const sql = `
-          SELECT EXTRACT(HOUR FROM sale_time AT TIME ZONE 'Asia/Manila')::int AS _id,
-                 COALESCE(SUM(total_centavos), 0)::bigint AS total
-          FROM sales
-          WHERE ${where}
-          GROUP BY 1
-          ORDER BY 1
-        `;
-        const res = await this._query(sql, params);
-        return res.rows.map(r => ({ _id: Number(r._id), total: Number(r.total) }));
-      }
-
-      // By day (last 7 days)
-      if (groupStage._id && typeof groupStage._id === 'object' && groupStage._id.$dateToString && groupStage._id.$dateToString.format === '%Y-%m-%d') {
-        const sql = `
-          SELECT TO_CHAR(sale_time AT TIME ZONE 'Asia/Manila', 'YYYY-MM-DD') AS _id,
-                 COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos
-          FROM sales
-          WHERE ${where}
-          GROUP BY 1
-          ORDER BY 1
-        `;
-        const res = await this._query(sql, params);
-        return res.rows.map(r => ({ _id: r._id, total_centavos: Number(r.total_centavos) }));
-      }
-
-      // By month (past 6 months)
-      if (groupStage._id && typeof groupStage._id === 'object' && groupStage._id.$dateToString && groupStage._id.$dateToString.format === '%Y-%m') {
-        const sql = `
-          SELECT TO_CHAR(sale_time AT TIME ZONE 'Asia/Manila', 'YYYY-MM') AS _id,
-                 COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos,
-                 COUNT(*)::int AS transaction_count,
-                 COALESCE(SUM((
-                   SELECT COALESCE(SUM((item->>'quantity')::int), 0)
-                   FROM jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
-                 )), 0)::int AS units_sold
-          FROM sales
-          WHERE ${where}
-          GROUP BY 1
-          ORDER BY 1
-        `;
-        const res = await this._query(sql, params);
-        return res.rows.map(r => ({
-          _id: r._id,
-          total_centavos: Number(r.total_centavos),
-          transaction_count: Number(r.transaction_count),
-          units_sold: Number(r.units_sold)
-        }));
-      }
-
-      // Overall totals: { _id: null, total_centavos: ... }
-      if (groupStage._id === null) {
-        const sql = `
-          SELECT COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos,
-                 COALESCE(SUM(food_centavos), 0)::bigint AS food_centavos,
-                 COALESCE(SUM(fee_centavos), 0)::bigint AS fee_centavos,
-                 COUNT(CASE WHEN source != 'refund' THEN 1 END)::int AS transaction_count,
-                 COALESCE(SUM((
-                   SELECT COALESCE(SUM((item->>'quantity')::int), 0)
-                   FROM jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
-                 )), 0)::int AS units_sold,
-                 COALESCE(SUM(total_centavos), 0)::bigint AS total
-          FROM sales
-          WHERE ${where}
-        `;
-        const res = await this._query(sql, params);
-        const r = res.rows[0] || {};
-        return [{
-          _id: null,
-          total: Number(r.total || 0),
-          total_centavos: Number(r.total_centavos || 0),
-          food_centavos: Number(r.food_centavos || 0),
-          fee_centavos: Number(r.fee_centavos || 0),
-          transaction_count: Number(r.transaction_count || 0),
-          units_sold: Number(r.units_sold || 0)
-        }];
-      }
-    }
-
-    return [];
+    throw new Error('unsupported pipeline');
   }
 }
 

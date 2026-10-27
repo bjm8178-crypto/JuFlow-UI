@@ -9,7 +9,7 @@
     "dev": "node --watch src/index.js",
     "seed": "node src/db/seed.js",
     "migrate:mongo-to-pg": "node src/db/migrate-mongo-to-pg.js",
-    "test": "node --test"
+    "test": "node --test --test-concurrency=1"
   },
   "keywords": [
     "juflow",

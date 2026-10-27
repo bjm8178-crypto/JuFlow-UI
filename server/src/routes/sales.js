@@ -5,6 +5,7 @@ import { validateSale } from '../lib/sale.js';
 import { businessDate, reportRange } from '../lib/business-date.js';
 import { integer, objectIdString, orderError, text } from '../lib/order.js';
 import { notifySale } from '../services/notifications.js';
+import { todayTotals, byPayment, byHour, byDay, byMonth, topProducts, dishCounts } from '../db/sales-queries.js';
 
 const router = express.Router();
 function filter(req, start, end) {
@@ -36,34 +37,17 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
   try {
     const db = getDb(), range = reportRange(req.query);
     const match = filter(req, range.start, range.end);
-    const aggregate = stages => db.collection('sales').aggregate(stages).toArray();
-    const topStage = matchCond => [
-      { $match: matchCond },
-      { $unwind: '$items' },
-      { $match: { 'items.quantity': { $gt: 0 } } },
-      { $group: {
-          _id: { $toLower: { $trim: { input: { $ifNull: ['$items.name', { $toString: '$items.product_id' }] } } } },
-          name: { $first: '$items.name' },
-          units: { $sum: '$items.quantity' },
-          revenue: { $sum: { $multiply: ['$items.quantity', '$items.price_centavos'] } }
-        }
-      },
-      { $project: { _id: { $ifNull: ['$name', '$_id'] }, units: 1, revenue: 1 } },
-      { $sort: { units: -1, _id: 1 } },
-      { $match: { units: { $gt: 0 } } },
-      { $limit: 6 }
-    ];
     const sixMonthsAgo = new Date(range.start.getTime() - 180 * 86400000);
     const [totals, month, hourly, products, payments, days, monthlySales, weeklyTop, monthlyTop] = await Promise.all([
-      aggregate([{ $match: match }, { $group: { _id: null, total_centavos: { $sum: '$total_centavos' }, food_centavos: { $sum: { $ifNull: ['$food_centavos', '$total_centavos'] } }, fee_centavos: { $sum: '$fee_centavos' }, transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } }, units_sold: { $sum: { $sum: '$items.quantity' } } } }]),
-      aggregate([{ $match: filter(req, range.monthStart, range.monthEnd) }, { $group: { _id: null, total: { $sum: '$total_centavos' } } }]),
-      aggregate([{ $match: match }, { $group: { _id: { $hour: { date: '$sale_time', timezone: 'Asia/Manila' } }, total: { $sum: '$total_centavos' } } }, { $sort: { _id: 1 } }]),
-      aggregate(topStage(match)),
-      aggregate([{ $match: match }, { $group: { _id: '$payment_method', total_centavos: { $sum: '$total_centavos' }, transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } } } }]),
-      aggregate([{ $match: filter(req, range.weekStart, range.weekEnd) }, { $group: { _id: { $dateToString: { date: '$sale_time', format: '%Y-%m-%d', timezone: 'Asia/Manila' } }, total_centavos: { $sum: '$total_centavos' } } }, { $sort: { _id: 1 } }]),
-      aggregate([{ $match: filter(req, sixMonthsAgo, range.end) }, { $group: { _id: { $dateToString: { date: '$sale_time', format: '%Y-%m', timezone: 'Asia/Manila' } }, total_centavos: { $sum: '$total_centavos' }, transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } }, units_sold: { $sum: { $sum: '$items.quantity' } } } }, { $sort: { _id: 1 } }]),
-      aggregate(topStage(filter(req, range.weekStart, range.weekEnd))),
-      aggregate(topStage(filter(req, range.monthStart, range.monthEnd)))
+      todayTotals(match, db),
+      todayTotals(filter(req, range.monthStart, range.monthEnd), db),
+      byHour(match, db),
+      topProducts(match, db),
+      byPayment(match, db),
+      byDay(filter(req, range.weekStart, range.weekEnd), db),
+      byMonth(filter(req, sixMonthsAgo, range.end), db),
+      topProducts(filter(req, range.weekStart, range.weekEnd), db),
+      topProducts(filter(req, range.monthStart, range.monthEnd), db)
     ]);
 
     const monthMap = new Map(monthlySales.map(m => [m._id, m]));
@@ -88,9 +72,12 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
     }
 
     res.json({
-      total_centavos: 0, food_centavos: 0, fee_centavos: 0, transaction_count: 0, units_sold: 0,
-      ...totals[0],
-      month_to_date_centavos: month[0]?.total || 0,
+      total_centavos: totals?.total_centavos ?? 0,
+      food_centavos: totals?.food_centavos ?? 0,
+      fee_centavos: totals?.fee_centavos ?? 0,
+      transaction_count: totals?.transaction_count ?? 0,
+      units_sold: totals?.units_sold ?? 0,
+      month_to_date_centavos: month?.total_centavos ?? 0,
       by_hour: hourly,
       top_products: products,
       top_products_daily: products,
@@ -107,14 +94,17 @@ export function createTodaySalesHandler({ database = getDb, clock = () => new Da
     try {
       const now = clock(), { start, end } = reportRange({}, now);
       const match = filter(req, start, end);
-      const [summary] = await database().collection('sales').aggregate([
-        { $match: match },
-        { $facet: {
-          totals: [{ $group: { _id: null, total_centavos: { $sum: '$total_centavos' }, food_centavos: { $sum: { $ifNull: ['$food_centavos', '$total_centavos'] } }, fee_centavos: { $sum: '$fee_centavos' }, transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } }, units_sold: { $sum: { $sum: '$items.quantity' } } } }, { $project: { _id: 0 } }],
-          by_payment: [{ $group: { _id: '$payment_method', total_centavos: { $sum: '$total_centavos' }, transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } } } }, { $sort: { _id: 1 } }]
-        } }
-      ]).toArray();
-      res.json({ date: businessDate(now), timezone: 'Asia/Manila', total_centavos: 0, food_centavos: 0, fee_centavos: 0, transaction_count: 0, units_sold: 0, ...summary?.totals[0], by_payment: summary?.by_payment ?? [] });
+      const summary = await todayTotals(match, database());
+      res.json({
+        date: businessDate(now),
+        timezone: 'Asia/Manila',
+        total_centavos: summary?.total_centavos ?? 0,
+        food_centavos: summary?.food_centavos ?? 0,
+        fee_centavos: summary?.fee_centavos ?? 0,
+        transaction_count: summary?.transaction_count ?? 0,
+        units_sold: summary?.units_sold ?? 0,
+        by_payment: summary?.by_payment ?? []
+      });
     } catch (error) { next(error); }
   };
 }
@@ -124,12 +114,7 @@ export function createCountsSalesHandler({ database = getDb, clock = () => new D
   return async (req, res, next) => {
     try {
       const now = clock(), { start, end } = reportRange({}, now);
-      const rows = await database().collection('sales').aggregate([
-        { $match: { sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true } } },
-        { $unwind: '$items' },
-        { $match: { 'items.product_id': { $ne: null } } },
-        { $group: { _id: { $toString: '$items.product_id' }, quantity: { $sum: '$items.quantity' } } }
-      ]).toArray();
+      const rows = await dishCounts({ start, end, sale_time: { $gte: start, $lt: end }, voided_at: null, is_test_sale: { $ne: true } }, database());
       res.json({ date: businessDate(now), counts: Object.fromEntries(rows.map(row => [row._id, row.quantity])) });
     } catch (error) { next(error); }
   };

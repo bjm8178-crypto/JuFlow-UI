@@ -20,6 +20,7 @@ const __dirname = path.dirname(__filename);
 
 // Import database functions after environment variables are set
 const { getDb, close, initSchema, withTransaction } = await import('../src/db/postgres.js');
+const { todayTotals, byPayment } = await import('../src/db/sales-queries.js');
 
 describe('PostgreSQL Real Integration Tests (Phase 0)', () => {
   let pool;
@@ -276,67 +277,24 @@ describe('PostgreSQL Real Integration Tests (Phase 0)', () => {
       }
     });
 
-    it('aggregates today totals via $facet pipeline', async () => {
-      const db = getDb();
-      const pipeline = [
-        { $match: { voided_at: null, is_test_sale: { $ne: true } } },
-        {
-          $facet: {
-            totals: [
-              {
-                $group: {
-                  _id: null,
-                  total_centavos: { $sum: '$total_centavos' },
-                  food_centavos: { $sum: '$food_centavos' },
-                  fee_centavos: { $sum: '$fee_centavos' },
-                  transaction_count: { $sum: { $cond: [{ $eq: ['$source', 'refund'] }, 0, 1] } },
-                  units_sold: { $sum: { $sum: '$items.quantity' } }
-                }
-              }
-            ],
-            by_payment: [
-              {
-                $group: {
-                  _id: '$payment_method',
-                  total_centavos: { $sum: '$total_centavos' },
-                  transaction_count: { $sum: 1 }
-                }
-              }
-            ]
-          }
-        }
-      ];
-
-      const res = await db.collection('sales').aggregate(pipeline).toArray();
-      assert.equal(res.length, 1);
-      const totals = res[0].totals[0];
-      // 10000 + 25000 - 5000 = 30000
-      assert.equal(totals.total_centavos, 30000);
-      assert.equal(totals.food_centavos, 25000);
-      assert.equal(totals.fee_centavos, 5000);
-      assert.equal(totals.transaction_count, 2); // refund not counted in transaction_count
+    it('aggregates today totals via named query todayTotals', async () => {
+      const filter = { voided_at: null, is_test_sale: { $ne: true } };
+      const res = await todayTotals(filter);
+      assert.equal(res.total_centavos, 30000);
+      assert.equal(res.food_centavos, 25000);
+      assert.equal(res.fee_centavos, 5000);
+      assert.equal(res.transaction_count, 2); // refund not counted in transaction_count
       // units sold: 2 + 4 - 1 = 5
-      assert.equal(totals.units_sold, 5);
+      assert.equal(res.units_sold, 5);
 
-      const byPayment = res[0].by_payment;
-      assert.ok(Array.isArray(byPayment));
-      assert.ok(byPayment.length >= 2);
+      const byPaymentRows = res.by_payment;
+      assert.ok(Array.isArray(byPaymentRows));
+      assert.ok(byPaymentRows.length >= 2);
     });
 
-    it('aggregates by payment method', async () => {
-      const db = getDb();
-      const pipeline = [
-        { $match: { voided_at: null, is_test_sale: { $ne: true } } },
-        {
-          $group: {
-            _id: '$payment_method',
-            total_centavos: { $sum: '$total_centavos' },
-            transaction_count: { $sum: 1 }
-          }
-        }
-      ];
-
-      const res = await db.collection('sales').aggregate(pipeline).toArray();
+    it('aggregates by payment method via byPayment', async () => {
+      const filter = { voided_at: null, is_test_sale: { $ne: true } };
+      const res = await byPayment(filter);
       assert.ok(Array.isArray(res));
       const cash = res.find(r => r._id === 'cash');
       const gcash = res.find(r => r._id === 'gcash');
