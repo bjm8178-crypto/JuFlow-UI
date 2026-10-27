@@ -83,9 +83,6 @@ export function createRidersRouter({ database = getDb, transaction = withTransac
       res.json(req.user.role_name === 'admin' ? rider : riderProfile(rider));
     } catch (error) { failure(error, res); }
   });
-  router.post('/', auth, requireRole('admin'), (req, res) => {
-    res.status(409).json({ error: 'single_rider', message: 'The single rider is managed through bootstrap' });
-  });
   for (const method of ['post', 'patch', 'delete']) router[method](method === 'post' ? '/' : '/:id', auth, requireRole('admin'), async (req, res) => {
     try {
       const id = method === 'post' ? null : toObjectId(req.params.id);

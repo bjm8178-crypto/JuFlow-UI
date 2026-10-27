@@ -1,10 +1,7 @@
-import { ObjectId } from 'mongodb';
-import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import crypto from 'node:crypto';
-import * as mongodb from '../db/mongodb.js';
 import { shape, validId, invalid } from '../lib/customer.js';
-import { getPool } from '../db/postgres.js';
+import { getDb, withTransaction, getPool } from '../db/postgres.js';
 
 export const MEDIA_BUCKET = 'landmark_media';
 export const MAX_IMAGE_CHARS = 600000;
@@ -68,8 +65,8 @@ async function cleanup(db, id) {
 export async function replaceLandmark(customerId, user, image, options = {}) {
   const customer_id = String(validId(customerId));
   const uploaded_by = actorId(user);
-  const db = options.db || mongodb.getDb();
-  const transact = options.transact || mongodb.withTransaction;
+  const db = options.db || getDb();
+  const transact = options.transact || withTransaction;
   if (typeof transact !== 'function') fail(503, 'transactions_required', 'Transactional media replacement is unavailable');
 
   const customer = await db.collection('customers').findOne({ _id: customer_id });
@@ -120,7 +117,7 @@ export async function replaceLandmark(customerId, user, image, options = {}) {
 
 export async function authorizedMedia(id, user, options = {}) {
   const mediaId = String(validId(id));
-  const db = options.db || mongodb.getDb();
+  const db = options.db || getDb();
   if (!['admin', 'cashier', 'rider'].includes(user?.role_name)) fail(403, 'forbidden', 'Media access denied');
 
   const pool = options.client || (db.client ? db.client : getPool());

@@ -77,7 +77,7 @@ export async function createOrder({ db, transaction, body, actor }) {
         return { order, duplicate: false };
       });
     } catch (error) {
-      if (error.code !== 11000) throw error;
+      if (error.code !== 11000 && error.code !== '23505') throw error;
       const winner = await db.collection('orders').findOne({ idempotency_key: input.idempotency_key });
       if (winner) return { order: checkReplay(winner, requestDigest), duplicate: true };
       // A concurrent first counter initializer may win its upsert. Retry the

@@ -255,6 +255,7 @@ CREATE TABLE IF NOT EXISTS counters (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+INSERT INTO counters (id, seq, data) VALUES ('order_number', 1000, '{"seq": 1000}'::jsonb) ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS audit_events (
   id VARCHAR(64) PRIMARY KEY,
@@ -295,3 +296,18 @@ CREATE TABLE IF NOT EXISTS integrity_guards (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS rider_locations (
+  id VARCHAR(64) PRIMARY KEY,
+  rider_id VARCHAR(64),
+  user_id VARCHAR(64),
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  accuracy DOUBLE PRECISION,
+  occurred_at TIMESTAMPTZ,
+  received_at TIMESTAMPTZ,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_rider_locations_rider_occurred ON rider_locations(rider_id, occurred_at DESC);

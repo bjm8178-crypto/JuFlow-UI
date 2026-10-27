@@ -158,6 +158,15 @@ export const MIGRATIONS = [
     sql: `
       ALTER TABLE IF EXISTS media_files ADD COLUMN IF NOT EXISTS bytes BYTEA;
     `
+  },
+  {
+    version: 4,
+    name: '004_seed_order_counter',
+    sql: `
+      INSERT INTO counters (id, seq, data, created_at, updated_at)
+      VALUES ('order_number', 1000, '{"seq": 1000}'::jsonb, NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING;
+    `
   }
 ];
 
@@ -304,6 +313,7 @@ const KNOWN_TABLE_COLUMNS = {
   audit_events: new Set(['id', 'event_id', 'entity_type', 'entity_id', 'action', 'actor_id', 'actor_role', 'payload', 'data', 'created_at', 'updated_at']),
   roles: new Set(['id', 'name', 'description', 'permissions', 'data', 'created_at', 'updated_at']),
   integrity_guards: new Set(['id', 'revision', 'data', 'created_at', 'updated_at']),
+  rider_locations: new Set(['id', 'rider_id', 'user_id', 'lat', 'lng', 'accuracy', 'occurred_at', 'received_at', 'data', 'created_at', 'updated_at']),
   media_files: new Set(['id', 'filename', 'mime_type', 'content_type', 'size', 'bytes', 'metadata', 'path', 'data', 'created_at', 'updated_at'])
 };
 
@@ -457,7 +467,19 @@ export class PostgresCollection {
 
   async findOne(filter = {}, options = {}) {
     const { where, params } = parseFilter(filter, [], this.name);
-    const sql = `SELECT * FROM ${this.name} WHERE ${where} LIMIT 1`;
+    let sortClause = '';
+    if (options.sort && typeof options.sort === 'object') {
+      const parts = [];
+      for (const [k, dir] of Object.entries(options.sort)) {
+        const col = (k === '_id' || k === 'id') ? 'id' : k;
+        parts.push(`${col} ${dir === -1 || dir === 'desc' ? 'DESC' : 'ASC'}`);
+      }
+      if (parts.length) sortClause = ` ORDER BY ${parts.join(', ')}`;
+    }
+    let sql = `SELECT * FROM ${this.name} WHERE ${where}${sortClause} LIMIT 1`;
+    if (options.forUpdate) {
+      sql += ' FOR UPDATE';
+    }
     const res = await this._query(sql, params);
     return normalizeRow(res.rows[0]);
   }
@@ -585,7 +607,65 @@ export class PostgresCollection {
   }
 
   async updateOne(filter, update, options = {}) {
-    const existing = await this.findOne(filter);
+    const validCols = await getTableColumns(this.name, this.client || getPool());
+
+    if (update.$inc && !update.$addToSet && !update.$pull && !update.$unset) {
+      const { where, params } = parseFilter(filter, [], this.name);
+      const sets = [];
+      for (const [k, v] of Object.entries(update.$inc)) {
+        const col = (k === '_id') ? 'id' : k;
+        if (validCols.has(col)) {
+          params.push(Number(v));
+          sets.push(`${col} = COALESCE(${this.name}.${col}, 0) + $${params.length}`);
+        }
+      }
+      if (update.$set) {
+        for (const [k, v] of Object.entries(update.$set)) {
+          const col = (k === '_id') ? 'id' : k;
+          if (['id', 'created_at'].includes(col)) continue;
+          if (validCols.has(col)) {
+            params.push(isObjectId(v) ? extractId(v) : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v));
+            sets.push(`${col} = $${params.length}`);
+          }
+        }
+      }
+      if (validCols.has('updated_at')) {
+        sets.push('updated_at = NOW()');
+      }
+
+      if (sets.length > 0) {
+        const sql = `UPDATE ${this.name} SET ${sets.join(', ')} WHERE ${where} RETURNING id`;
+        const res = await this._query(sql, params);
+        if (res.rowCount > 0) {
+          return { matchedCount: res.rowCount, modifiedCount: res.rowCount };
+        }
+        if (options.upsert) {
+          const filterFields = {};
+          for (const [k, v] of Object.entries(filter || {})) {
+            if (!k.startsWith('$') && (typeof v !== 'object' || v instanceof Date || isObjectId(v) || v === null)) {
+              const val = isObjectId(v) ? extractId(v) : v;
+              filterFields[k === '_id' ? 'id' : k] = val;
+            }
+          }
+          const id = filter._id || filter.id || filterFields.id || crypto.randomBytes(12).toString('hex');
+          const newDoc = {
+            ...filterFields,
+            ...(options.$setOnInsert || update.$setOnInsert || {}),
+            ...(update.$set || {})
+          };
+          for (const [k, v] of Object.entries(update.$inc)) {
+            newDoc[k] = (Number(newDoc[k]) || 0) + Number(v);
+          }
+          newDoc.id = String(id);
+          await this.insertOne(newDoc);
+          return { matchedCount: 0, modifiedCount: 1, upsertedId: id };
+        }
+        return { matchedCount: 0, modifiedCount: 0 };
+      }
+    }
+
+    const isTx = Boolean(this.client);
+    const existing = await this.findOne(filter, { forUpdate: isTx });
     if (!existing) {
       if (options.upsert) {
         const filterFields = {};
@@ -644,7 +724,6 @@ export class PostgresCollection {
     updatedDoc.updated_at = new Date();
 
     const id = String(existing.id || existing._id);
-    const validCols = await getTableColumns(this.name, this.client || getPool());
     const sets = [];
     const params = [id];
     if (validCols.has('data')) {
@@ -685,7 +764,74 @@ export class PostgresCollection {
   }
 
   async findOneAndUpdate(filter, update, options = {}) {
-    const before = await this.findOne(filter);
+    if (update.$inc && !update.$addToSet && !update.$pull && !update.$unset) {
+      const validCols = await getTableColumns(this.name, this.client || getPool());
+      const { where, params } = parseFilter(filter, [], this.name);
+      const sets = [];
+      for (const [k, v] of Object.entries(update.$inc)) {
+        const col = (k === '_id') ? 'id' : k;
+        if (validCols.has(col)) {
+          params.push(Number(v));
+          sets.push(`${col} = COALESCE(${this.name}.${col}, 0) + $${params.length}`);
+        }
+      }
+      if (update.$set) {
+        for (const [k, v] of Object.entries(update.$set)) {
+          const col = (k === '_id') ? 'id' : k;
+          if (['id', 'created_at'].includes(col)) continue;
+          if (validCols.has(col)) {
+            params.push(isObjectId(v) ? extractId(v) : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v));
+            sets.push(`${col} = $${params.length}`);
+          }
+        }
+      }
+      if (validCols.has('updated_at')) {
+        sets.push('updated_at = NOW()');
+      }
+
+      if (sets.length > 0) {
+        const sql = `UPDATE ${this.name} SET ${sets.join(', ')} WHERE ${where} RETURNING *`;
+        const res = await this._query(sql, params);
+        if (res.rows.length > 0) {
+          const row = normalizeRow(res.rows[0]);
+          if (options.returnDocument === 'before') {
+            const before = { ...row };
+            for (const [k, v] of Object.entries(update.$inc)) {
+              before[k] = (Number(before[k]) || 0) - Number(v);
+            }
+            return before;
+          }
+          return row;
+        }
+        if (options.upsert) {
+          const filterFields = {};
+          for (const [k, v] of Object.entries(filter || {})) {
+            if (!k.startsWith('$') && (typeof v !== 'object' || v instanceof Date || isObjectId(v) || v === null)) {
+              const val = isObjectId(v) ? extractId(v) : v;
+              filterFields[k === '_id' ? 'id' : k] = val;
+            }
+          }
+          const id = filter._id || filter.id || filterFields.id || crypto.randomBytes(12).toString('hex');
+          const initialDoc = {
+            ...filterFields,
+            ...(options.$setOnInsert || update.$setOnInsert || {}),
+            ...(update.$set || {})
+          };
+          for (const [k, v] of Object.entries(update.$inc)) {
+            initialDoc[k] = (Number(initialDoc[k]) || 0) + Number(v);
+          }
+          initialDoc.id = String(id);
+          initialDoc.created_at = new Date();
+          initialDoc.updated_at = new Date();
+          await this.insertOne(initialDoc);
+          return options.returnDocument === 'after' ? initialDoc : null;
+        }
+        return null;
+      }
+    }
+
+    const isTx = Boolean(this.client);
+    const before = await this.findOne(filter, { forUpdate: isTx });
     if (!before) {
       if (options.upsert) {
         const filterFields = {};
