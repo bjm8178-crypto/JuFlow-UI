@@ -158,7 +158,7 @@
     const x = i => pad.l + (n > 1 ? i / (n - 1) : 0.5) * iw;
     const y = v => pad.t + ih * (1 - v / yMax);
     const f = k => k.toFixed(1);
-    const every = (opts.labelEvery && W < 480) ? opts.labelEvery : 1;
+    const every = (opts.labelEvery && iw / n < 46) ? opts.labelEvery : 1;
 
     const grid = [0, 1, 2, 3, 4, 5].map(i => {
       const v = yMax * i / 5;
@@ -221,9 +221,9 @@
     });
   }
 
-  // Store hours: open 8 AM, close 10 PM. Each point is one hour bucket starting at its label (8a = 8:00-8:59 AM, last = 9p = 9:00-9:59 PM).
-  const OPEN_HOUR = 8, CLOSE_HOUR = 22;
-  function hourShort(h) { return (h % 12 || 12) + (h < 12 ? 'a' : 'p'); }
+  // Store hours: open 6 AM, close 11 PM. Each point is one hour bucket starting at its label (6 AM = 6:00-6:59 AM, last = 10 PM = 10:00-10:59 PM).
+  const OPEN_HOUR = 6, CLOSE_HOUR = 23;
+  function hourShort(h) { return (h % 12 || 12) + (h < 12 ? ' AM' : ' PM'); }
 
   // Daily: one point per hour while the store is open, to see the busiest hours.
   function renderDailyChart(byHour) {
@@ -243,11 +243,11 @@ for (let h = OPEN_HOUR; h < CLOSE_HOUR; h++) {
     renderLineChart(items, {
       dotsEverywhere: false,
       labelEvery: 2,
-      aria: 'Sales trend per hour, 8 AM to 10 PM',
+      aria: 'Sales trend per hour, 6 AM to 11 PM',
       peakText: it => `Busiest hour: <strong>${E(it.tip)}</strong>`,
-      totalText: 'Total (8 AM – 10 PM)',
-      emptyText: 'No sales recorded between 8 AM and 10 PM yet.',
-      note: outside > 0 ? `Not shown: ${money(outside)} recorded outside store hours (before 8 AM or after 10 PM).` : ''
+      totalText: 'Total (6 AM – 11 PM)',
+      emptyText: 'No sales recorded between 6 AM and 11 PM yet.',
+      note: outside > 0 ? `Not shown: ${money(outside)} recorded outside store hours (before 6 AM or after 11 PM).` : ''
     });
   }
 
