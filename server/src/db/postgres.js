@@ -129,8 +129,40 @@ export function normalizeRow(row) {
   return doc;
 }
 
+const KNOWN_TABLE_COLUMNS = {
+  users: new Set(['id', 'username', 'email', 'password_hash', 'full_name', 'phone', 'role_id', 'is_active', 'failed_attempts', 'locked_until', 'last_login_at', 'data', 'created_at', 'updated_at']),
+  auth_sessions: new Set(['id', 'user_id', 'token_hash', 'ip_address', 'user_agent', 'expires_at', 'revoked_at', 'data', 'created_at', 'updated_at']),
+  categories: new Set(['id', 'name', 'slug', 'sort_order', 'is_active', 'data', 'created_at', 'updated_at']),
+  products: new Set(['id', 'category_id', 'name', 'name_key', 'description', 'price_centavos', 'cost_centavos', 'is_available', 'is_active', 'image_url', 'image_data', 'data', 'created_at', 'updated_at']),
+  customers: new Set(['id', 'name', 'phone', 'messenger', 'address', 'notes', 'latitude', 'longitude', 'is_active', 'data', 'created_at', 'updated_at']),
+  delivery_zones: new Set(['id', 'name', 'fee_centavos', 'estimated_minutes', 'sort_order', 'is_active', 'coordinates', 'data', 'created_at', 'updated_at']),
+  riders: new Set(['id', 'user_id', 'name', 'phone', 'vehicle_type', 'vehicle_plate', 'notes', 'is_available', 'is_active', 'current_lat', 'current_lng', 'last_location_at', 'data', 'created_at', 'updated_at']),
+  orders: new Set(['id', 'order_number', 'order_seq', 'idempotency_key', 'customer_id', 'customer', 'items', 'subtotal_centavos', 'fee_centavos', 'total_centavos', 'cash_tendered_centavos', 'change_centavos', 'payment_method', 'gcash_reference', 'status', 'notes', 'pricing_actor', 'cashier_id', 'rider_id', 'delivery', 'data', 'created_at', 'updated_at']),
+  deliveries: new Set(['id', 'order_id', 'rider_id', 'status', 'notes', 'fee_centavos', 'delivery_zone_id', 'dropoff_lat', 'dropoff_lng', 'picked_up_at', 'delivered_at', 'data', 'created_at', 'updated_at']),
+  sales: new Set(['id', 'transaction_id', 'order_id', 'void_id', 'event_id', 'sale_time', 'received_at', 'source', 'payment_method', 'items', 'food_centavos', 'fee_centavos', 'total_centavos', 'cash_tendered_centavos', 'gcash_reference', 'recorded_by', 'is_test_sale', 'voided_at', 'digest', 'data', 'created_at', 'updated_at']),
+  settings: new Set(['id', 'key', 'value', 'description', 'data', 'created_at', 'updated_at']),
+  daily_menu: new Set(['id', 'date', 'dishes', 'data', 'created_at', 'updated_at']),
+  notifications: new Set(['id', 'type', 'title', 'body', 'read', 'data', 'created_at', 'updated_at']),
+  counters: new Set(['id', 'seq', 'data', 'created_at', 'updated_at']),
+  audit_events: new Set(['id', 'event_id', 'entity_type', 'entity_id', 'action', 'actor_id', 'actor_role', 'payload', 'data', 'created_at', 'updated_at']),
+  roles: new Set(['id', 'name', 'description', 'permissions', 'data', 'created_at', 'updated_at']),
+  integrity_guards: new Set(['id', 'revision', 'data', 'created_at', 'updated_at']),
+  media_files: new Set(['id', 'filename', 'mime_type', 'size', 'path', 'data', 'created_at', 'updated_at'])
+};
+
+function hasColumn(tableName, col) {
+  if (col === 'id' || col === '_id') return true;
+  if (tableColumnCache.has(tableName)) {
+    return tableColumnCache.get(tableName).has(col);
+  }
+  if (KNOWN_TABLE_COLUMNS[tableName]) {
+    return KNOWN_TABLE_COLUMNS[tableName].has(col);
+  }
+  return false;
+}
+
 // Convert Mongo-style filter to PostgreSQL WHERE clause
-function parseFilter(filter = {}, params = []) {
+function parseFilter(filter = {}, params = [], tableName = null) {
   if (!filter || Object.keys(filter).length === 0) return { where: '1=1', params };
   const clauses = [];
 
@@ -138,7 +170,7 @@ function parseFilter(filter = {}, params = []) {
     if (key === '$or' && Array.isArray(val)) {
       const orClauses = [];
       for (const item of val) {
-        const sub = parseFilter(item, params);
+        const sub = parseFilter(item, params, tableName);
         orClauses.push(`(${sub.where})`);
       }
       clauses.push(`(${orClauses.join(' OR ')})`);
@@ -147,67 +179,75 @@ function parseFilter(filter = {}, params = []) {
     if (key === '$and' && Array.isArray(val)) {
       const andClauses = [];
       for (const item of val) {
-        const sub = parseFilter(item, params);
+        const sub = parseFilter(item, params, tableName);
         andClauses.push(`(${sub.where})`);
       }
       clauses.push(`(${andClauses.join(' AND ')})`);
       continue;
     }
 
+    const isCol = (key === '_id' || key === 'id') || (tableName && hasColumn(tableName, key));
     const colName = (key === '_id' || key === 'id') ? 'id' : key;
 
     // Handle operator objects: { $ne, $gte, $lt, $gt, $lte, $in, $regex }
     if (val && typeof val === 'object' && !(val instanceof Date) && !(val instanceof ObjectId)) {
       if ('$ne' in val) {
         if (val.$ne === null) {
-          clauses.push(`(${colName} IS NOT NULL OR data->>'${key}' IS NOT NULL)`);
+          clauses.push(isCol ? `(${colName} IS NOT NULL)` : `(data->'${key}' IS NOT NULL)`);
         } else if (val.$ne === false) {
-          clauses.push(`(COALESCE(${colName}, true) IS NOT FALSE)`);
+          clauses.push(isCol ? `(COALESCE(${colName}, true) IS NOT FALSE)` : `(COALESCE((data->>'${key}')::boolean, true) IS NOT FALSE)`);
         } else if (val.$ne === true) {
-          clauses.push(`(COALESCE(${colName}, false) IS NOT TRUE)`);
+          clauses.push(isCol ? `(COALESCE(${colName}, false) IS NOT TRUE)` : `(COALESCE((data->>'${key}')::boolean, false) IS NOT TRUE)`);
         } else {
-          params.push(String(val.$ne instanceof ObjectId ? val.$ne.id : val.$ne));
-          clauses.push(`(${colName} IS DISTINCT FROM $${params.length})`);
+          const target = String(val.$ne instanceof ObjectId ? val.$ne.id : val.$ne);
+          params.push(target);
+          if (isCol) {
+            clauses.push(`(${colName} IS DISTINCT FROM $${params.length})`);
+          } else {
+            clauses.push(`(data->'${key}' IS NULL OR (CASE WHEN jsonb_typeof(data->'${key}') = 'array' THEN NOT (data->'${key}' ? $${params.length}) ELSE data->>'${key}' IS DISTINCT FROM $${params.length} END))`);
+          }
         }
       }
       if ('$gte' in val) {
         params.push(val.$gte);
-        clauses.push(`${colName} >= $${params.length}`);
+        clauses.push(isCol ? `${colName} >= $${params.length}` : `(data->>'${key}')::numeric >= $${params.length}`);
       }
       if ('$gt' in val) {
         params.push(val.$gt);
-        clauses.push(`${colName} > $${params.length}`);
+        clauses.push(isCol ? `${colName} > $${params.length}` : `(data->>'${key}')::numeric > $${params.length}`);
       }
       if ('$lte' in val) {
         params.push(val.$lte);
-        clauses.push(`${colName} <= $${params.length}`);
+        clauses.push(isCol ? `${colName} <= $${params.length}` : `(data->>'${key}')::numeric <= $${params.length}`);
       }
       if ('$lt' in val) {
         params.push(val.$lt);
-        clauses.push(`${colName} < $${params.length}`);
+        clauses.push(isCol ? `${colName} < $${params.length}` : `(data->>'${key}')::numeric < $${params.length}`);
       }
       if ('$in' in val && Array.isArray(val.$in)) {
         const mapped = val.$in.map(v => String(v instanceof ObjectId ? v.id : v));
         params.push(mapped);
-        clauses.push(`${colName} = ANY($${params.length})`);
+        clauses.push(isCol ? `${colName} = ANY($${params.length})` : `data->>'${key}' = ANY($${params.length})`);
       }
       if ('$regex' in val) {
         params.push(`%${val.$regex}%`);
-        clauses.push(`(${colName}::text ILIKE $${params.length} OR data->>'${key}' ILIKE $${params.length})`);
+        clauses.push(isCol ? `(${colName}::text ILIKE $${params.length} OR data->>'${key}' ILIKE $${params.length})` : `data->>'${key}' ILIKE $${params.length}`);
       }
       continue;
     }
 
     // Direct value match
     if (val === null) {
-      clauses.push(`(${colName} IS NULL OR data->>'${key}' IS NULL)`);
+      clauses.push(isCol ? `(${colName} IS NULL)` : `(data->'${key}' IS NULL)`);
     } else {
       const v = (val instanceof ObjectId) ? val.id : val;
       params.push(v);
       if (key === '_id' || key === 'id') {
         clauses.push(`id = $${params.length}::text`);
-      } else {
+      } else if (isCol) {
         clauses.push(`(${colName} = $${params.length} OR data->>'${key}' = $${params.length}::text)`);
+      } else {
+        clauses.push(`(CASE WHEN jsonb_typeof(data->'${key}') = 'array' THEN data->'${key}' ? $${params.length}::text ELSE data->>'${key}' = $${params.length}::text END)`);
       }
     }
   }
@@ -228,7 +268,7 @@ async function getTableColumns(tableName, client) {
     tableColumnCache.set(tableName, set);
     return set;
   } catch (_) {
-    return new Set();
+    return KNOWN_TABLE_COLUMNS[tableName] || new Set();
   }
 }
 
@@ -244,7 +284,7 @@ export class PostgresCollection {
   }
 
   async findOne(filter = {}, options = {}) {
-    const { where, params } = parseFilter(filter);
+    const { where, params } = parseFilter(filter, [], this.name);
     const sql = `SELECT * FROM ${this.name} WHERE ${where} LIMIT 1`;
     try {
       const res = await this._query(sql, params);
@@ -286,7 +326,7 @@ export class PostgresCollection {
         return cursor;
       },
       async toArray() {
-        const { where, params } = parseFilter(filter);
+        const { where, params } = parseFilter(filter, [], self.name);
         let sql = `SELECT * FROM ${self.name} WHERE ${where}${sortClause}`;
         if (limitVal !== null && limitVal > 0) {
           sql += ` LIMIT ${limitVal}`;
@@ -303,7 +343,7 @@ export class PostgresCollection {
   }
 
   async countDocuments(filter = {}) {
-    const { where, params } = parseFilter(filter);
+    const { where, params } = parseFilter(filter, [], this.name);
     const sql = `SELECT COUNT(*)::int AS count FROM ${this.name} WHERE ${where}`;
     const res = await this._query(sql, params);
     return res.rows[0]?.count || 0;
@@ -380,6 +420,23 @@ export class PostgresCollection {
         updatedDoc[k] = (Number(updatedDoc[k]) || 0) + Number(v);
       }
     }
+    if (update.$addToSet) {
+      for (const [k, v] of Object.entries(update.$addToSet)) {
+        const arr = Array.isArray(updatedDoc[k]) ? [...updatedDoc[k]] : [];
+        const valStr = (v instanceof ObjectId) ? v.id : v;
+        if (!arr.some(item => String(item) === String(valStr))) {
+          arr.push(valStr);
+        }
+        updatedDoc[k] = arr;
+      }
+    }
+    if (update.$pull) {
+      for (const [k, v] of Object.entries(update.$pull)) {
+        const arr = Array.isArray(updatedDoc[k]) ? [...updatedDoc[k]] : [];
+        const valStr = (v instanceof ObjectId) ? v.id : v;
+        updatedDoc[k] = arr.filter(item => String(item) !== String(valStr));
+      }
+    }
     updatedDoc.updated_at = new Date();
 
     const id = String(existing.id || existing._id);
@@ -401,6 +458,16 @@ export class PostgresCollection {
     );
 
     return { matchedCount: 1, modifiedCount: 1 };
+  }
+
+  async updateMany(filter = {}, update = {}, options = {}) {
+    const docs = await this.find(filter).toArray();
+    let modifiedCount = 0;
+    for (const doc of docs) {
+      const res = await this.updateOne({ id: doc.id || doc._id }, update, { ...options, upsert: false });
+      if (res.modifiedCount) modifiedCount += res.modifiedCount;
+    }
+    return { matchedCount: docs.length, modifiedCount };
   }
 
   async findOneAndUpdate(filter, update, options = {}) {
@@ -433,26 +500,34 @@ export class PostgresCollection {
   }
 
   async deleteMany(filter) {
-    const { where, params } = parseFilter(filter);
+    const { where, params } = parseFilter(filter, [], this.name);
     const res = await this._query(`DELETE FROM ${this.name} WHERE ${where}`, params);
     return { deletedCount: res.rowCount };
   }
 
-  async aggregate(pipeline = []) {
-    // Specialized high-performance aggregation for sales and general reports
-    if (this.name === 'sales') {
-      return this._aggregateSales(pipeline);
-    }
-    // Generic fallback for in-memory or simple operations
-    const all = await this.find().toArray();
-    return all;
+  aggregate(pipeline = []) {
+    const self = this;
+    const promise = (async () => {
+      if (self.name === 'sales') {
+        return await self._aggregateSales(pipeline);
+      }
+      const all = await self.find().toArray();
+      return all;
+    })();
+
+    return {
+      then: promise.then.bind(promise),
+      catch: promise.catch.bind(promise),
+      finally: promise.finally.bind(promise),
+      toArray: () => promise
+    };
   }
 
   async _aggregateSales(pipeline = []) {
     const p = getPool();
     // Parse match condition from first stage if present
     let matchStage = pipeline.find(s => s.$match)?.$match || {};
-    const { where, params } = parseFilter(matchStage);
+    const { where, params } = parseFilter(matchStage, [], 'sales');
 
     // 1. Group Totals
     const groupStage = pipeline.find(s => s.$group)?.$group;
@@ -508,7 +583,7 @@ export class PostgresCollection {
                  COUNT(*)::int AS transaction_count,
                  COALESCE(SUM((
                    SELECT COALESCE(SUM((item->>'quantity')::int), 0)
-                   FROM jsonb_array_elements(items) AS item
+                   FROM jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
                  )), 0)::int AS units_sold
           FROM sales
           WHERE ${where}
@@ -533,7 +608,7 @@ export class PostgresCollection {
                  COUNT(CASE WHEN source != 'refund' THEN 1 END)::int AS transaction_count,
                  COALESCE(SUM((
                    SELECT COALESCE(SUM((item->>'quantity')::int), 0)
-                   FROM jsonb_array_elements(items) AS item
+                   FROM jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
                  )), 0)::int AS units_sold,
                  COALESCE(SUM(total_centavos), 0)::bigint AS total
           FROM sales
@@ -560,7 +635,7 @@ export class PostgresCollection {
                COALESCE(SUM((item->>'quantity')::int), 0)::int AS units,
                COALESCE(SUM((item->>'quantity')::int * (item->>'price_centavos')::bigint), 0)::bigint AS revenue
         FROM sales,
-             jsonb_array_elements(items) AS item
+             jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
         WHERE ${where} AND (item->>'quantity')::int > 0
         GROUP BY (item->>'name')
         ORDER BY units DESC, _id ASC
