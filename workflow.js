@@ -254,6 +254,33 @@
     const at = steps.findIndex(s => s[0] === order.status);
     return '<p class="map-help">' + steps.map((s, i) => (i <= at ? '● ' : '○ ') + s[1]).join(' &rarr; ') + '</p>';
   }
+  /* Admin controls: set an open order to Preparing, Done (delivered) or Cancelled. */
+  const STATUS_NAME = { preparing: 'Preparing', delivered: 'Done', cancelled: 'Cancelled' };
+  function orderControls(order) {
+    if (!['preparing', 'on_the_way'].includes(order.status)) return '';
+    const id = E(order._id);
+    const button = (status, label, cls) => `<button type="button" class="${cls}" data-order="${id}" data-order-status="${status}"${order.status === status ? ' disabled' : ''}>${label}</button>`;
+    return `<div class="status-steps" role="group" aria-label="Change order status">${button('preparing', 'Preparing', 'secondary')}${button('delivered', 'Done', 'primary')}${button('cancelled', 'Cancel order', 'secondary danger')}</div>`;
+  }
+  async function changeOrderStatus(id, status) {
+    const order = state.orders.find(o => o._id === id);
+    if (!order) return;
+    const note = status === 'delivered' ? '\n\nThis marks it delivered and records the sale.' : status === 'cancelled' ? '\n\nA cancelled order cannot be reopened.' : '';
+    if (!confirm(`Set order ${order.order_number} to "${STATUS_NAME[status]}"?${note}`)) return;
+    const card = [...document.querySelectorAll('[data-order-error]')].find(el => el.dataset.orderError === id);
+    const buttons = card ? [...card.parentElement.querySelectorAll('[data-order-status]')] : [];
+    buttons.forEach(b => { b.disabled = true; });
+    if (card) card.textContent = '';
+    try {
+      await send(`/orders/${endpointId(id)}/status`, 'POST', { status });
+      notice(`Order ${order.order_number} is now ${STATUS_NAME[status]}.`);
+      await refresh(true);
+    } catch (error) {
+      if (card) card.textContent = error.message || 'Could not change the status. Please retry.';
+      buttons.forEach(b => { b.disabled = false; });
+    }
+  }
+
   function renderOrders() {
     const filter = $('#order-filter').value;
     const search = ($('#order-search')?.value || '').trim().toLowerCase();
@@ -267,7 +294,7 @@
         (order.customer?.address || '').toLowerCase().includes(search)
       );
     }
-    $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge ${order.status === 'delivered' ? 'green' : 'amber'}">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${progress(order)}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
+    $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge ${order.status === 'delivered' ? 'green' : 'amber'}">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${progress(order)}${orderControls(order)}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
   }
   async function deleteCustomer(c) {
     if (!confirm(`Delete ${c.name}?\n\nThey will no longer appear in Customers or when creating orders. Past orders and sales are kept.`)) return;
@@ -385,6 +412,11 @@
   } else if ($('#order-list')) {
     $('#order-filter').onchange = renderOrders;
     if ($('#order-search')) $('#order-search').oninput = renderOrders;
+    $('#order-list').addEventListener('click', event => {
+      const button = event.target.closest('[data-order-status]');
+      if (button && !button.disabled) changeOrderStatus(button.dataset.order, button.dataset.orderStatus);
+    });
+
     setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) refresh(true); }, 10000);
   }
   $('#refresh-records').onclick = refresh;

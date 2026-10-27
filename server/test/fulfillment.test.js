@@ -179,7 +179,13 @@ describe('simple status flow: preparing -> on_the_way -> delivered', () => {
     assert.ok(ok('preparing', 'cancelled', 'cashier'));
     assert.ok(!ok('preparing', 'cancelled', 'rider'), 'rider cannot cancel');
     assert.ok(!ok('preparing', 'delivered', 'cashier'), 'cannot skip on_the_way');
-    assert.ok(!ok('preparing', 'on_the_way', 'admin'), 'admin only watches');
+    assert.ok(ok('preparing', 'on_the_way', 'admin'), 'admin can correct open orders');
+    assert.ok(ok('preparing', 'delivered', 'admin'), 'admin may mark an open order done');
+    assert.ok(ok('on_the_way', 'preparing', 'admin'));
+    assert.ok(ok('on_the_way', 'cancelled', 'admin'));
+    assert.ok(!ok('delivered', 'preparing', 'admin'), 'delivered is final for admin too');
+    assert.ok(!ok('cancelled', 'preparing', 'admin'), 'cancelled is final for admin too');
+    assert.ok(!ok('preparing', 'on_the_way', 'viewer'), 'unknown roles are rejected');
     assert.ok(!ok('delivered', 'preparing', 'cashier'), 'delivered is final');
     assert.ok(!ok('cancelled', 'preparing', 'cashier'), 'cancelled is final');
     const same = canChangeStatus('delivered', 'delivered', 'rider');
@@ -191,15 +197,37 @@ describe('simple status flow: preparing -> on_the_way -> delivered', () => {
     assert.equal(order.status, 'preparing');
   });
 
-  it('same-status retries and admin never bypass role checks', async () => {
+  it('same-status retries are no-ops and unknown roles never bypass role checks', async () => {
     const same = canChangeStatus('preparing', 'preparing', 'cashier');
     assert.equal(same.allowed, true);
     assert.equal(same.noop, true);
-    assert.equal(canChangeStatus('preparing', 'preparing', 'admin').allowed, false);
+    assert.equal(canChangeStatus('preparing', 'preparing', 'admin').allowed, true);
     assert.equal(canChangeStatus('preparing', 'preparing', 'unknown').allowed, false);
     const f = fixture(), order = await intake(f);
-    await assert.rejects(move(f, order, 'preparing', admin), error => error.status === 409 && /cashier.*rider/.test(error.message));
+    await assert.rejects(move(f, order, 'preparing', { ...admin, role_name: 'viewer' }), error => error.status === 409 && /admin.*cashier.*rider/.test(error.message));
     assert.equal(f.tables.orders[0].version, 0);
+  });
+
+  it('admin can set an open order to done (even from preparing), preparing, or cancelled', async () => {
+    const f = fixture(), order = await intake(f);
+    const back = await move(f, order, 'on_the_way', admin);
+    assert.equal(back.order.status, 'on_the_way');
+    const reset = await move(f, order, 'preparing', admin);
+    assert.equal(reset.order.status, 'preparing');
+    const done = await move(f, order, 'delivered', admin);
+    assert.equal(done.order.status, 'delivered');
+    assert.equal(f.tables.sales.length, 1, 'done records exactly one sale');
+    await assert.rejects(move(f, order, 'preparing', admin), error => error.status === 409, 'a delivered order stays final');
+    await assert.rejects(move(f, order, 'cancelled', admin), error => error.status === 409, 'a delivered order cannot be cancelled');
+    assert.equal(f.tables.sales.length, 1);
+  });
+
+  it('admin can cancel an open order and it creates no sale', async () => {
+    const f = fixture(), order = await intake(f);
+    const cancelled = await move(f, order, 'cancelled', admin);
+    assert.equal(cancelled.order.status, 'cancelled');
+    assert.equal(f.tables.sales.length, 0);
+    await assert.rejects(move(f, order, 'preparing', admin), error => error.status === 409, 'a cancelled order stays final');
   });
 
   it('delivered creates exactly one sale and one notification; a retry creates no second sale', async () => {
@@ -228,7 +256,7 @@ describe('simple status flow: preparing -> on_the_way -> delivered', () => {
   it('rejects forbidden moves with 409 and changes nothing', async () => {
     const f = fixture(), order = await intake(f);
     await assert.rejects(move(f, order, 'delivered'), error => error.status === 409);
-    await assert.rejects(move(f, order, 'on_the_way', admin), error => error.status === 409 && /cashier.*rider/.test(error.message));
+    await assert.rejects(move(f, order, 'on_the_way', { ...admin, role_name: 'viewer' }), error => error.status === 409 && /admin.*cashier.*rider/.test(error.message));
     await assert.rejects(move(f, order, 'cancelled', riderUser), error => error.status === 409);
     await assert.rejects(move(f, order, 'shipped'), error => error.status === 400);
     assert.equal(f.tables.orders[0].status, 'preparing');

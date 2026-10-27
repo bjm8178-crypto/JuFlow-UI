@@ -50,7 +50,7 @@ router.post('/', authenticate, requireRole('admin', 'cashier'), async (req, res,
 });
 
 // The one status endpoint. Body: { "status": "preparing" | "on_the_way" | "delivered" | "cancelled" }
-router.post('/:id/status', authenticate, requireRole('cashier', 'rider'), async (req, res, next) => {
+router.post('/:id/status', authenticate, requireRole('admin', 'cashier', 'rider'), async (req, res, next) => {
   try {
     const { order } = await setOrderStatus({ transaction: withTransaction, orderId: req.params.id, status: req.body?.status, actor: req.user });
     res.json(order);

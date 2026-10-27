@@ -157,6 +157,21 @@ test('admin orders page shows the three-step status and never offers rider assig
   assert.equal(app.calls.some(call => call.endpoint === '/riders' || call.endpoint.endsWith('/actions')), false);
 });
 
+test('admin orders page offers Preparing, Done and Cancel only on open orders', async () => {
+  const app = fixture('orders', async endpoint => {
+    if (endpoint.startsWith('/orders?')) return [{ ...order, _id: 'order-2', order_number: 'JU-1002', status: 'on_the_way' }, { ...order, _id: 'order-3', order_number: 'JU-1003', status: 'delivered' }];
+    throw Error('Unexpected request ' + endpoint);
+  });
+  await app.ready();
+  const html = app.node('order-list').innerHTML;
+  for (const status of ['preparing', 'delivered', 'cancelled']) {
+    assert.equal(html.split(`data-order-status="${status}"`).length - 1, 1, `${status} control appears once, on the open order only`);
+  }
+  assert.match(html, /data-order="order-2"/);
+  assert.doesNotMatch(html, /data-order="order-3"/);
+});
+
+
 test('owned pages load API before guard/controller and have reference/status controls', async () => {
   for (const name of ['customers', 'orders']) {
     const html = await readFile(new URL(`../${name}.html`, import.meta.url), 'utf8');
