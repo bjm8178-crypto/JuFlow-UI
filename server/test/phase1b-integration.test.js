@@ -226,9 +226,7 @@ describe('Phase 1b - Real PostgreSQL Integration Tests (A, B, C)', () => {
   });
 
   describe('Item B: Riders schema and code agreement (list, create, update)', () => {
-    let createdRiderId;
-
-    it('POST /api/riders creates a new rider with full_name, phone, plate_no, is_available', async () => {
+    it('POST /api/riders returns 409 single_rider per business rule', async () => {
       const res = await fetch(`${baseUrl}/api/riders`, {
         method: 'POST',
         headers: {
@@ -244,13 +242,10 @@ describe('Phase 1b - Real PostgreSQL Integration Tests (A, B, C)', () => {
         })
       });
 
-      assert.equal(res.status, 201);
+      assert.equal(res.status, 409);
       const body = await res.json();
-      assert.ok(body._id || body.id);
-      createdRiderId = String(body._id || body.id);
-      assert.equal(body.full_name, 'Speedy Gonzales');
-      assert.equal(body.plate_no, 'SPD 777');
-      assert.equal(body.is_available, true);
+      assert.equal(body.error, 'single_rider');
+      assert.match(body.message, /single rider is managed through bootstrap/i);
     });
 
     it('GET /api/riders sorts by full_name and agrees with schema without 500 error', async () => {
@@ -261,7 +256,7 @@ describe('Phase 1b - Real PostgreSQL Integration Tests (A, B, C)', () => {
       assert.equal(res.status, 200);
       const list = await res.json();
       assert.ok(Array.isArray(list));
-      assert.ok(list.length >= 3);
+      assert.ok(list.length >= 2);
 
       // Verify sorting by full_name ASC
       for (let i = 1; i < list.length; i++) {
@@ -272,14 +267,14 @@ describe('Phase 1b - Real PostgreSQL Integration Tests (A, B, C)', () => {
     });
 
     it('PATCH /api/riders/:id updates rider fields and persists', async () => {
-      const res = await fetch(`${baseUrl}/api/riders/${createdRiderId}`, {
+      const res = await fetch(`${baseUrl}/api/riders/${testRiderId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Cookie': adminCookie
         },
         body: JSON.stringify({
-          full_name: 'Speedy G. Updated',
+          full_name: 'Rider One Updated',
           plate_no: 'SPD 888',
           is_available: false
         })
@@ -287,17 +282,17 @@ describe('Phase 1b - Real PostgreSQL Integration Tests (A, B, C)', () => {
 
       assert.equal(res.status, 200);
       const body = await res.json();
-      assert.equal(body.full_name, 'Speedy G. Updated');
+      assert.equal(body.full_name, 'Rider One Updated');
       assert.equal(body.plate_no, 'SPD 888');
       assert.equal(body.is_available, false);
 
       // Verify reading back via GET /api/riders/:id
-      const getRes = await fetch(`${baseUrl}/api/riders/${createdRiderId}`, {
+      const getRes = await fetch(`${baseUrl}/api/riders/${testRiderId}`, {
         headers: { 'Cookie': adminCookie }
       });
       assert.equal(getRes.status, 200);
       const getBody = await getRes.json();
-      assert.equal(getBody.full_name, 'Speedy G. Updated');
+      assert.equal(getBody.full_name, 'Rider One Updated');
       assert.equal(getBody.plate_no, 'SPD 888');
       assert.equal(getBody.is_available, false);
     });

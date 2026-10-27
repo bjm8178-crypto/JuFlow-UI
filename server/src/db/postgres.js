@@ -104,7 +104,30 @@ export function getPool() {
 export const MIGRATIONS = [
   {
     version: 1,
-    name: '001_initial_backfill_orders_deliveries',
+    name: '001-integrity',
+    sql: `
+      UPDATE users SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL AND email != LOWER(TRIM(email));
+      UPDATE orders SET version = 0 WHERE version IS NULL;
+    `
+  },
+  {
+    version: 2,
+    name: '002-simple-status',
+    sql: `
+      UPDATE orders SET
+        status = CASE
+          WHEN status IN ('received', 'preparing', 'ready', 'assigned') THEN 'preparing'
+          WHEN status IN ('picked_up', 'on_the_way', 'arrived', 'awaiting_cashier_confirmation') THEN 'on_the_way'
+          WHEN status = 'delivered' THEN 'delivered'
+          WHEN status = 'cancelled' THEN 'cancelled'
+          ELSE status
+        END
+      WHERE status IN ('received', 'ready', 'assigned', 'picked_up', 'arrived', 'awaiting_cashier_confirmation');
+    `
+  },
+  {
+    version: 3,
+    name: '003-backfill-orders-deliveries',
     sql: `
       ALTER TABLE IF EXISTS counters ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
       ALTER TABLE IF EXISTS counters ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
@@ -139,8 +162,8 @@ export const MIGRATIONS = [
     `
   },
   {
-    version: 2,
-    name: '002_riders_columns_and_sync',
+    version: 4,
+    name: '004-riders-columns-and-sync',
     sql: `
       ALTER TABLE IF EXISTS riders ADD COLUMN IF NOT EXISTS full_name VARCHAR(150);
       ALTER TABLE IF EXISTS riders ADD COLUMN IF NOT EXISTS plate_no VARCHAR(50);
@@ -150,18 +173,29 @@ export const MIGRATIONS = [
         full_name = COALESCE(full_name, name),
         plate_no = COALESCE(plate_no, vehicle_plate)
       WHERE full_name IS NULL OR plate_no IS NULL;
+      UPDATE riders SET
+        name = COALESCE(name, full_name),
+        vehicle_plate = COALESCE(vehicle_plate, plate_no)
+      WHERE name IS NULL OR vehicle_plate IS NULL;
+      UPDATE riders SET
+        is_available = CASE WHEN status = 'available' THEN TRUE ELSE FALSE END
+      WHERE is_available IS NULL AND status IS NOT NULL;
+      UPDATE riders SET
+        status = CASE WHEN is_available IS TRUE THEN 'available' ELSE 'offline' END
+      WHERE status IS NULL AND is_available IS NOT NULL;
     `
   },
   {
-    version: 3,
-    name: '003_media_files_bytes',
+    version: 5,
+    name: '005-media-files-bytes',
     sql: `
       ALTER TABLE IF EXISTS media_files ADD COLUMN IF NOT EXISTS bytes BYTEA;
+      ALTER TABLE IF EXISTS media_files ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
     `
   },
   {
-    version: 4,
-    name: '004_seed_order_counter',
+    version: 6,
+    name: '006-seed-order-counter',
     sql: `
       INSERT INTO counters (id, seq, data, created_at, updated_at)
       VALUES ('order_number', 1000, '{"seq": 1000}'::jsonb, NOW(), NOW())
