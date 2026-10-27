@@ -11,7 +11,7 @@ async function createFrontendServer({ root = __dirname, apiPort = 3000 } = {}) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()');
+    res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(self), microphone=()');
     // Forward API requests before considering any static path, preserving bodies.
     if (req.url === '/api' || req.url.startsWith('/api/') || req.url.startsWith('/api?')) {
       const headers = { ...req.headers, host: `localhost:${apiPort}` };

@@ -4,6 +4,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 import { objectIdString, orderError } from '../lib/order.js';
 import { createOrder, patchNotes } from '../services/fulfillment.js';
 import { setOrderStatus } from '../services/simple-flow.js';
+import { saveProof, listProofs } from '../services/delivery-proof.js';
 import { ordersRepo } from '../db/repositories/index.js';
 
 const router = express.Router();
@@ -54,6 +55,23 @@ router.post('/:id/status', authenticate, requireRole('admin', 'cashier', 'rider'
   try {
     const { order } = await setOrderStatus({ transaction: withTransaction, orderId: req.params.id, status: req.body?.status, actor: req.user });
     res.json(order);
+  } catch (error) { next(error); }
+});
+
+// Proof of delivery: the rider (or cashier/admin) sends a photo; the admin views it on the Orders page.
+// Body: { "image": "data:image/jpeg;base64,..." }
+router.post('/:id/proof', authenticate, requireRole('admin', 'cashier', 'rider'), express.json({ limit: '1mb' }), async (req, res, next) => {
+  try {
+    res.status(201).json(await saveProof(req.params.id, req.user, req.body));
+  } catch (error) { next(error); }
+});
+
+router.get('/:id/proof', authenticate, requireRole('admin', 'cashier', 'rider'), async (req, res, next) => {
+  try {
+    let proofs = await listProofs(req.params.id);
+    // A rider only sees the proofs they sent themselves.
+    if (req.user.role_name === 'rider') proofs = proofs.filter(p => p.uploaded_role === 'rider');
+    res.json(proofs);
   } catch (error) { next(error); }
 });
 

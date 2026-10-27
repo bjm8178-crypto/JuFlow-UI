@@ -133,6 +133,16 @@ export async function authorizedMedia(id, user, options = {}) {
     WHERE id = $1 AND metadata->>'state' = 'ready'
   `, [mediaId]);
   const row = fileRes.rows[0];
+
+  // Proof-of-delivery photos: admin and cashier may view any; a rider only the ones they uploaded.
+  if (row && row.metadata?.kind === 'delivery_proof' && row.metadata.content_type === 'image/jpeg') {
+    if (user.role_name === 'rider' && String(row.metadata.uploaded_by) !== String(user.id)) fail(403, 'forbidden', 'Media access denied');
+    return {
+      file: { _id: row.id, id: row.id, length: row.bytes ? row.bytes.length : Number(row.size || 0), metadata: row.metadata },
+      stream: Readable.from([row.bytes])
+    };
+  }
+
   if (!row || !row.metadata?.customer_id || row.metadata.content_type !== 'image/jpeg') {
     fail(404, 'media_not_found', 'Media not found');
   }

@@ -281,6 +281,36 @@
     }
   }
 
+  /* Proof of delivery: photo(s) sent by the rider. */
+  function proofButton(order) {
+    if (!['on_the_way', 'delivered'].includes(order.status)) return '';
+    return `<button type="button" class="secondary proof-btn" data-order-proof="${E(order._id)}">&#128247; View proof of delivery</button>`;
+  }
+  async function showProof(id, button) {
+    const label = button ? button.innerHTML : '';
+    if (button) { button.disabled = true; button.textContent = 'Loading…'; }
+    try {
+      const list = await request(`/orders/${endpointId(id)}/proof`);
+      if (!Array.isArray(list) || !list.length) { notice('No proof of delivery has been sent for this order yet.'); return; }
+      let dlg = document.getElementById('proof-dialog');
+      if (!dlg) {
+        dlg = document.createElement('dialog');
+        dlg.id = 'proof-dialog';
+        dlg.className = 'proof-dialog';
+        document.body.appendChild(dlg);
+      }
+      const order = state.orders.find(o => o._id === id);
+      dlg.innerHTML = `<div class="proof-head"><h3>Proof of delivery${order ? ' · ' + E(order.order_number) : ''}</h3><button type="button" class="secondary" data-close>Close</button></div>` +
+        list.map(p => `<figure><img src="${E(p.url)}" alt="Proof of delivery photo"><figcaption>${E(new Date(p.uploaded_at).toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }))}${p.uploaded_role ? ' · sent by ' + E(p.uploaded_role) : ''}</figcaption></figure>`).join('');
+      dlg.querySelector('[data-close]').onclick = () => dlg.close();
+      dlg.showModal();
+    } catch (error) {
+      notice(error.message || 'Could not load the proof of delivery.');
+    } finally {
+      if (button) { button.disabled = false; button.innerHTML = label; }
+    }
+  }
+
   function renderOrders() {
     const filter = $('#order-filter').value;
     const search = ($('#order-search')?.value || '').trim().toLowerCase();
@@ -294,7 +324,7 @@
         (order.customer?.address || '').toLowerCase().includes(search)
       );
     }
-    $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge ${order.status === 'delivered' ? 'green' : 'amber'}">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${progress(order)}${orderControls(order)}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
+    $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge ${order.status === 'delivered' ? 'green' : 'amber'}">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${progress(order)}${orderControls(order)}${proofButton(order)}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
   }
   async function deleteCustomer(c) {
     if (!confirm(`Delete ${c.name}?\n\nThey will no longer appear in Customers or when creating orders. Past orders and sales are kept.`)) return;
@@ -415,6 +445,8 @@
     $('#order-list').addEventListener('click', event => {
       const button = event.target.closest('[data-order-status]');
       if (button && !button.disabled) changeOrderStatus(button.dataset.order, button.dataset.orderStatus);
+      const proof = event.target.closest('[data-order-proof]');
+      if (proof) showProof(proof.dataset.orderProof, proof);
     });
 
     setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) refresh(true); }, 10000);

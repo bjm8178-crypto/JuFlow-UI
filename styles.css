@@ -769,3 +769,14 @@ dialog[open]{animation:dialogIn .22s var(--ease)}
 .live-chart .trend-axis-label.sub{font-size:10px;opacity:.8}
 .live-chart .bar-hit{fill:transparent;cursor:pointer}
 .live-chart .bar-hit:hover{fill:var(--orange);fill-opacity:.06}
+
+
+/* ---- Proof of delivery viewer (admin Orders page) ---- */
+.order-card .order-actions .proof-btn{width:100%;margin-top:8px;min-height:42px}
+.proof-dialog{max-width:min(92vw,520px);width:100%;border:none;border-radius:14px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.proof-dialog::backdrop{background:rgba(0,0,0,.45)}
+.proof-dialog .proof-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.proof-dialog .proof-head h3{margin:0;font-size:16px}
+.proof-dialog figure{margin:0 0 14px}
+.proof-dialog img{display:block;width:100%;max-height:70vh;object-fit:contain;background:#111;border-radius:10px}
+.proof-dialog figcaption{font-size:12px;color:var(--muted);margin-top:6px}

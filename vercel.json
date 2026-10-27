@@ -114,7 +114,7 @@
         },
         {
           "key": "Permissions-Policy",
-          "value": "geolocation=(self), camera=(), microphone=()"
+          "value": "geolocation=(self), camera=(self), microphone=()"
         },
         {
           "key": "Content-Security-Policy",
