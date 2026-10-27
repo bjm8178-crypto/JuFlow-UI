@@ -54,7 +54,7 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
     const db = getDb(), range = reportRange(req.query);
     const match = filter(req, range.start, range.end);
     const sixMonthsAgo = new Date(range.start.getTime() - 180 * 86400000);
-    const [totals, month, hourly, products, payments, days, monthlySales, weeklyTop, monthlyTop] = await Promise.all([
+    const [totals, month, hourly, products, payments, days, monthlySales, weeklyTop, monthlyTop, monthDays] = await Promise.all([
       todayTotals(match, db),
       todayTotals(filter(req, range.monthStart, range.monthEnd), db),
       byHour(match, db),
@@ -63,7 +63,8 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
       byDay(filter(req, range.weekStart, range.weekEnd), db),
       byMonth(filter(req, sixMonthsAgo, range.end), db),
       topProducts(filter(req, range.weekStart, range.weekEnd), db),
-      topProducts(filter(req, range.monthStart, range.monthEnd), db)
+      topProducts(filter(req, range.monthStart, range.monthEnd), db),
+      byDay(filter(req, range.monthStart, range.monthEnd), db)
     ]);
 
     const monthMap = new Map(monthlySales.map(m => [m._id, m]));
@@ -87,6 +88,19 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
       sevenDaysList.push(dayMap.get(key) || { _id: key, total_centavos: 0 });
     }
 
+    // Daily totals for the selected month (day 1 up to the selected day), for the monthly trend line.
+    const selectedDay = businessDate(new Date(range.monthEnd.getTime() - 1000));
+    const monthKey = selectedDay.slice(0, 7);
+    const [selYear, selMonth, selDayNum] = selectedDay.split('-').map(Number);
+    const daysInMonth = new Date(Date.UTC(selYear, selMonth, 0)).getUTCDate();
+    const monthDayMap = new Map(monthDays.map(d => [d._id, d]));
+    const monthDaysList = [];
+    for (let day = 1; day <= selDayNum; day++) {
+      const key = `${monthKey}-${String(day).padStart(2, '0')}`;
+      monthDaysList.push(monthDayMap.get(key) || { _id: key, total_centavos: 0 });
+    }
+
+
     res.json({
       total_centavos: totals?.total_centavos ?? 0,
       food_centavos: totals?.food_centavos ?? 0,
@@ -101,7 +115,11 @@ router.get('/summary', authenticate, requireRole('admin'), async (req, res, next
       top_products_monthly: monthlyTop,
       by_payment: payments,
       last_seven_days: sevenDaysList,
-      by_month: sixMonthsList
+      by_month: sixMonthsList,
+      month: monthKey,
+      days_in_month: daysInMonth,
+      by_day_of_month: monthDaysList
+
     });
   } catch (error) { next(error); }
 });

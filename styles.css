@@ -737,3 +737,25 @@ dialog[open]{animation:dialogIn .22s var(--ease)}
   .panel,.stat{box-shadow:none}
 }
 
+/* ---- Admin Orders page: status controls (Preparing / Done / Cancel order) ---- */
+.order-card .order-actions{display:flex;flex-direction:column;align-items:stretch;gap:12px}
+.order-card .order-actions .map-help{margin:0}
+.order-card .order-actions .status-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%}
+.order-card .order-actions .status-steps button{width:100%;min-height:42px;margin:0;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.order-card .order-actions .status-steps button:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:420px){
+  .order-card .order-actions .status-steps{grid-template-columns:1fr}
+}
+
+
+/* ---- Monthly sales trend line chart (one point per day of the month) ---- */
+.live-chart .trend-chart{display:block;width:100%;height:auto;max-width:100%;overflow:visible}
+.live-chart .trend-grid{stroke:var(--border);stroke-width:1;stroke-dasharray:3 4}
+.live-chart .trend-axis-label{font-size:11px;fill:var(--muted)}
+.live-chart .trend-axis-label.today{fill:var(--orange);font-weight:700}
+.live-chart .trend-line{fill:none;stroke:var(--orange);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.live-chart .trend-area{fill:var(--orange);fill-opacity:.12;stroke:none}
+.live-chart .trend-dot{fill:#fff;stroke:var(--orange);stroke-width:2;pointer-events:none}
+.live-chart .trend-dot.peak{fill:var(--orange)}
+.live-chart .trend-hit{fill:transparent;cursor:pointer}
+.live-chart .trend-hit:hover + .trend-dot{fill:var(--orange)}

@@ -65,22 +65,80 @@
     return date.toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
   }
 
-  function renderMonthlyChart(byMonth) {
-    const months = byMonth || [];
-    const values = months.map(m => m.total_centavos || 0);
-    const peak = Math.max(...values, 0);
-    const max = Math.max(peak, 1);
-    const peakIdx = peak > 0 ? values.indexOf(peak) : -1;
-    el('sales-chart').innerHTML =
-      '<div class="month-bars" role="img" aria-label="Monthly sales">' +
-      months.map((m, i) => {
-        const val = m.total_centavos || 0;
-        const heightPct = val ? Math.max(10, Math.round((val / max) * 100)) : 0;
-        return `<div class="month-column${i === peakIdx && peak > 0 ? ' peak' : ''}" title="${monthName(m._id)} · ${money(val)}"><div class="month-bar${val ? '' : ' zero'}" style="height:${heightPct}%"><span class="sr-only">${monthName(m._id)} ${money(val)}</span></div><small>${monthName(m._id)}</small></div>`;
-      }).join('') +
-      '</div>' +
-      `<p class="chart-peak">${peakIdx >= 0 && peak > 0 ? `Peak month: <strong>${monthName(months[peakIdx]._id)}</strong> · ${money(peak)}` : 'No monthly sales recorded yet.'}</p>`;
+  function monthTitle(ym) {
+    if (!ym) return '';
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
   }
+  function shortDay(key) {
+    return new Date(key + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  }
+  function niceMax(v) {
+    if (v <= 0) return 100000; // PHP 1,000 (centavos) when there are no sales yet
+    const pow = Math.pow(10, Math.floor(Math.log10(v)));
+    const n = v / pow;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * pow;
+  }
+  const axisMoney = cents => '₱' + (cents / 100).toLocaleString('en-PH', { maximumFractionDigits: 0 });
+
+  // Monthly trend: one point per day of the selected month (day 1 ... last day), drawn as a line.
+  function renderMonthlyChart(d) {
+    const days = (d && d.by_day_of_month) || [];
+    const total = Math.max((d && d.days_in_month) || days.length || 30, 2);
+    const values = days.map(x => x.total_centavos || 0);
+    const peak = Math.max(...values, 0);
+    const peakIdx = peak > 0 ? values.indexOf(peak) : -1;
+    const sum = values.reduce((s, v) => s + v, 0);
+    const label = monthTitle(d && d.month);
+
+    const chart = el('sales-chart');
+    const panelEl = chart.closest('.panel');
+    const heading = el('chart-title') || panelEl?.querySelector('.panel-heading h2');
+    const sub = el('chart-sub') || panelEl?.querySelector('.panel-heading p');
+    if (heading && label) heading.textContent = label + ' sales';
+    if (sub) sub.textContent = 'Daily sales trend · Philippine time' + (isSalesPage ? '' : ' · Updates every 10 seconds');
+
+    const W = Math.max(300, Math.floor(chart.clientWidth - 40) || 640);
+    const H = W < 480 ? 230 : 280;
+    const pad = { l: 52, r: 14, t: 14, b: 32 };
+    const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+    const yMax = niceMax(peak);
+    const x = day => pad.l + (day - 1) / (total - 1) * iw;
+    const y = v => pad.t + ih * (1 - v / yMax);
+    const f = n => n.toFixed(1);
+
+    const grid = [0, 1, 2, 3, 4, 5].map(i => {
+      const v = yMax * i / 5;
+      return `<line class="trend-grid" x1="${pad.l}" x2="${W - pad.r}" y1="${f(y(v))}" y2="${f(y(v))}"/><text class="trend-axis-label" x="${pad.l - 8}" y="${f(y(v) + 4)}" text-anchor="end">${axisMoney(v)}</text>`;
+    }).join('');
+
+    const ticks = [];
+    for (let day = 1; day <= total; day++) if (day === 1 || day % 5 === 0) ticks.push(day);
+    if (total - ticks[ticks.length - 1] >= 3) ticks.push(total);
+    const xLabels = ticks.map(day => `<text class="trend-axis-label${day === days.length ? ' today' : ''}" x="${f(x(day))}" y="${H - 10}" text-anchor="middle">${day}</text>`).join('');
+
+    const pts = days.map((p, i) => [x(i + 1), y(values[i])]);
+    const line = pts.map((p, i) => (i ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1])).join(' ');
+    const area = pts.length ? `${line} L${f(pts[pts.length - 1][0])} ${f(y(0))} L${f(pts[0][0])} ${f(y(0))} Z` : '';
+    const dots = days.map((p, i) => {
+      const tip = `${shortDay(p._id)} · ${money(values[i])}`;
+      const show = values[i] > 0 || i === days.length - 1;
+      return `<g><circle class="trend-hit" cx="${f(pts[i][0])}" cy="${f(pts[i][1])}" r="10"><title>${tip}</title></circle>` +
+        (show ? `<circle class="trend-dot${i === peakIdx ? ' peak' : ''}" cx="${f(pts[i][0])}" cy="${f(pts[i][1])}" r="${i === peakIdx ? 5 : 3.5}"/>` : '') + '</g>';
+    }).join('');
+
+    chart.innerHTML =
+      `<svg class="trend-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${E(label)} daily sales trend">` +
+      grid + (area ? `<path class="trend-area" d="${area}"/><path class="trend-line" d="${line}"/>` : '') + dots + xLabels +
+      '</svg>' +
+      `<p class="chart-peak">${peakIdx >= 0 ? `Peak day: <strong>${shortDay(days[peakIdx]._id)}</strong> · ${money(peak)} · Month to date: <strong>${money(sum)}</strong>` : 'No sales recorded this month yet.'}</p>`;
+  }
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (lastData) updateView(lastData); }, 200);
+  });
 
   function renderWeeklyChart(sevenDays) {
     const days = sevenDays || [];
@@ -138,18 +196,16 @@
 
     if (!isSalesPage) {
       // Main dashboard: Monthly sales graph and monthly top-selling food
-      renderMonthlyChart(d.by_month);
+      renderMonthlyChart(d);
       renderTopProducts(monthlyList, 'this month');
       return;
     }
 
     // Full Analytics page: Check active tab [Monthly | Weekly | Daily]
     if (currentTab === 'monthly') {
-      if (el('chart-title')) el('chart-title').textContent = 'Monthly sales overview';
-      if (el('chart-sub')) el('chart-sub').textContent = 'Past 6 months · Philippine time';
       if (el('top-title')) el('top-title').textContent = 'Top-selling food (Monthly)';
       if (el('top-sub')) el('top-sub').textContent = 'Ranked by units sold in the active month';
-      renderMonthlyChart(d.by_month);
+      renderMonthlyChart(d);
       renderTopProducts(monthlyList, 'this month');
     } else if (currentTab === 'weekly') {
       if (el('chart-title')) el('chart-title').textContent = 'Weekly sales overview';
