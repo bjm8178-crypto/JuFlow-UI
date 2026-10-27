@@ -95,6 +95,29 @@ export async function initSchema(client = getPool()) {
       ALTER TABLE IF EXISTS integrity_guards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
       ALTER TABLE IF EXISTS media_files ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
       ALTER TABLE IF EXISTS orders ALTER COLUMN rider TYPE TEXT;
+      UPDATE orders SET
+        order_number = COALESCE(order_number, data->>'order_number'),
+        order_seq = COALESCE(order_seq, (data->>'order_seq')::int),
+        customer_id = COALESCE(customer_id, data->>'customer_id'),
+        customer = CASE WHEN customer IS NULL OR customer = '{}'::jsonb THEN COALESCE(data->'customer', '{}'::jsonb) ELSE customer END,
+        items = CASE WHEN items IS NULL OR items = '[]'::jsonb THEN COALESCE(data->'items', '[]'::jsonb) ELSE items END,
+        total_centavos = COALESCE(NULLIF(total_centavos, 0), (data->>'total_centavos')::int, 0),
+        subtotal_centavos = COALESCE(NULLIF(subtotal_centavos, 0), (data->>'subtotal_centavos')::int, 0),
+        fee_centavos = COALESCE(NULLIF(fee_centavos, 0), (data->>'fee_centavos')::int, 0),
+        payment_method = COALESCE(payment_method, data->>'payment_method'),
+        payment_status = COALESCE(payment_status, data->>'payment_status', 'pending'),
+        status = COALESCE(data->>'status', status),
+        rider_id = COALESCE(rider_id, data->>'rider_id'),
+        rider = COALESCE(rider, data->>'rider'),
+        notes = COALESCE(notes, data->>'notes')
+      WHERE data IS NOT NULL AND data != '{}'::jsonb;
+      UPDATE deliveries SET
+        order_id = COALESCE(order_id, data->>'order_id'),
+        customer_id = COALESCE(customer_id, data->>'customer_id'),
+        rider_id = COALESCE(rider_id, data->>'rider_id'),
+        status = COALESCE(data->>'status', status),
+        notes = COALESCE(notes, data->>'notes')
+      WHERE data IS NOT NULL AND data != '{}'::jsonb;
     `);
   } catch (_) {}
 }
@@ -131,8 +154,17 @@ export async function readiness() {
 export function normalizeRow(row) {
   if (!row) return null;
   const extra = (row.data && typeof row.data === 'object') ? row.data : {};
-  const doc = { ...extra, ...row };
-  delete doc.data;
+  const doc = { ...extra };
+  for (const [k, v] of Object.entries(row)) {
+    if (k === 'data') continue;
+    if (v !== null && v !== undefined) {
+      if ((v === 0 || v === '' || (Array.isArray(v) && v.length === 0)) && extra[k] !== undefined && extra[k] !== null && extra[k] !== 0 && extra[k] !== '') {
+        doc[k] = extra[k];
+      } else {
+        doc[k] = v;
+      }
+    }
+  }
   doc._id = row.id;
   doc.id = row.id;
 
