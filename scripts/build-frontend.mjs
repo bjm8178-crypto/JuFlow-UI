@@ -6,7 +6,7 @@ export const FRONTEND_FILES = Object.freeze([
   'index.html', 'login.html', 'dashboard.html', 'orders.html',
   'delivery-map.html', 'customers.html', 'sales.html', 'dishes.html',
   'styles.css', 'app.js', 'auth-guard.js', 'api.js', 'store.js', 'workflow.js',
-  'analytics.js', 'delivery-state.js', 'admin-deliveries.js',
+  'analytics.js', 'delivery-state.js', 'admin-deliveries.js', 'assistant.js',
   'map-config.js', 'landmarks.js', 'customer-map.js',
   'users.html',
   'cashier/index.html', 'cashier/app.js', 'cashier/boot.js', 'cashier/cashier.css',

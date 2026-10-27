@@ -119,6 +119,9 @@ import ordersRoutes from './routes/orders.js';
 import salesRoutes, { cashierRouter as cashierSalesRoutes } from './routes/sales.js';
 import deliveriesRoutes from './routes/deliveries.js';
 
+// Admin AI assistant (Groq, read-only business data)
+import assistantRoutes from './routes/assistant.js';
+
 // Auth routes
 app.use('/api/auth', authRoutes);
 
@@ -146,6 +149,9 @@ app.use('/api/cashier/sales', cashierTokenAuth, cashierSalesRoutes);
 
 // Deliveries
 app.use('/api/deliveries', deliveriesRoutes);
+
+// Admin AI assistant
+app.use('/api/assistant', assistantRoutes);
 
 // Settings
 app.use('/api/settings', settingsRoutes);
