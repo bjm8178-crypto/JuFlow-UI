@@ -398,7 +398,16 @@ export class PostgresCollection {
     const existing = await this.findOne(filter);
     if (!existing) {
       if (options.upsert) {
+        const filterFields = {};
+        for (const [k, v] of Object.entries(filter || {})) {
+          if (!k.startsWith('$') && (typeof v !== 'object' || v instanceof Date || v instanceof ObjectId || v === null)) {
+            const val = (v instanceof ObjectId) ? v.id : v;
+            filterFields[k === '_id' ? 'id' : k] = val;
+            if (k === '_id') filterFields._id = val;
+          }
+        }
         const newDoc = {
+          ...filterFields,
           ...(options.$setOnInsert || update.$setOnInsert || {}),
           ...(update.$set || {})
         };
@@ -474,10 +483,18 @@ export class PostgresCollection {
     const before = await this.findOne(filter);
     if (!before) {
       if (options.upsert) {
+        const filterFields = {};
+        for (const [k, v] of Object.entries(filter || {})) {
+          if (!k.startsWith('$') && (typeof v !== 'object' || v instanceof Date || v instanceof ObjectId || v === null)) {
+            const val = (v instanceof ObjectId) ? v.id : v;
+            filterFields[k === '_id' ? 'id' : k] = val;
+            if (k === '_id') filterFields._id = val;
+          }
+        }
         const id = filter._id || filter.id || crypto.randomBytes(12).toString('hex');
         const setOnInsert = update.$setOnInsert || {};
         const setFields = update.$set || {};
-        const doc = { ...setOnInsert, ...setFields, id };
+        const doc = { ...filterFields, ...setOnInsert, ...setFields, id };
         await this.insertOne(doc);
         return options.returnDocument === 'after' ? doc : null;
       }

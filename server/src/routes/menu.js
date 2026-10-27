@@ -32,7 +32,7 @@ router.put('/today', authenticate, requireRole('admin'), async (req, res, next) 
     if (found !== ids.length) return res.status(400).json({ error: 'validation_error', message: 'Unknown or deleted dish in list' });
     const date = phToday();
     await db.collection('daily_menu').updateOne({ date },
-      { $set: { product_ids: ids, updated_by: req.user.id, updated_at: new Date() }, $setOnInsert: { created_at: new Date() } },
+      { $set: { date, product_ids: ids, updated_by: req.user.id, updated_at: new Date() }, $setOnInsert: { created_at: new Date() } },
       { upsert: true });
     res.json({ date, product_ids: ids });
   } catch (e) { next(e); }
