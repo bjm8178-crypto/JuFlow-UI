@@ -249,6 +249,21 @@ function parseFilter(filter = {}, params = [], tableName = null) {
         params.push(mapped);
         clauses.push(isCol ? `${colName} = ANY($${params.length})` : `data->>'${key}' = ANY($${params.length})`);
       }
+      if ('$nin' in val && Array.isArray(val.$nin)) {
+        const mapped = val.$nin.map(v => String(v instanceof ObjectId ? v.id : v));
+        params.push(mapped);
+        clauses.push(isCol
+          ? `(${colName} IS NULL OR NOT (${colName} = ANY($${params.length})))`
+          : `(data->>'${key}' IS NULL OR NOT (data->>'${key}' = ANY($${params.length})))`
+        );
+      }
+      if ('$exists' in val) {
+        if (val.$exists) {
+          clauses.push(isCol ? `${colName} IS NOT NULL` : `(data->'${key}' IS NOT NULL)`);
+        } else {
+          clauses.push(isCol ? `${colName} IS NULL` : `(data->'${key}' IS NULL)`);
+        }
+      }
       if ('$regex' in val) {
         params.push(`%${val.$regex}%`);
         clauses.push(isCol ? `(${colName}::text ILIKE $${params.length} OR data->>'${key}' ILIKE $${params.length})` : `data->>'${key}' ILIKE $${params.length}`);
@@ -265,7 +280,7 @@ function parseFilter(filter = {}, params = [], tableName = null) {
       if (key === '_id' || key === 'id') {
         clauses.push(`id = $${params.length}::text`);
       } else if (isCol) {
-        clauses.push(`(${colName} = $${params.length} OR data->>'${key}' = $${params.length}::text)`);
+        clauses.push(`(${colName} = $${params.length} OR data->>'${key}' = ($${params.length})::text)`);
       } else {
         clauses.push(`(CASE WHEN jsonb_typeof(data->'${key}') = 'array' THEN data->'${key}' ? $${params.length}::text ELSE data->>'${key}' = $${params.length}::text END)`);
       }
@@ -466,6 +481,11 @@ export class PostgresCollection {
         updatedDoc[k] = arr.filter(item => String(item) !== String(valStr));
       }
     }
+    if (update.$unset) {
+      for (const k of Object.keys(update.$unset)) {
+        delete updatedDoc[k];
+      }
+    }
     updatedDoc.updated_at = new Date();
 
     const id = String(existing.id || existing._id);
@@ -576,7 +596,98 @@ export class PostgresCollection {
     let matchStage = pipeline.find(s => s.$match)?.$match || {};
     const { where, params } = parseFilter(matchStage, [], 'sales');
 
-    // 1. Group Totals
+    // 0. Handle $facet (from /api/sales/today)
+    const facetStage = pipeline.find(s => s.$facet)?.$facet;
+    if (facetStage) {
+      const totSql = `
+        SELECT COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos,
+               COALESCE(SUM(COALESCE(food_centavos, total_centavos)), 0)::bigint AS food_centavos,
+               COALESCE(SUM(fee_centavos), 0)::bigint AS fee_centavos,
+               COUNT(CASE WHEN source != 'refund' THEN 1 END)::int AS transaction_count,
+               COALESCE(SUM((
+                 SELECT COALESCE(SUM((item->>'quantity')::int), 0)
+                 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
+               )), 0)::int AS units_sold
+        FROM sales
+        WHERE ${where}
+      `;
+      const totRes = await this._query(totSql, params);
+      const tot = totRes.rows[0] || {};
+
+      const byPaySql = `
+        SELECT payment_method AS _id,
+               COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos,
+               COUNT(CASE WHEN source != 'refund' THEN 1 END)::int AS transaction_count
+        FROM sales
+        WHERE ${where}
+        GROUP BY payment_method
+        ORDER BY _id ASC
+      `;
+      const byPayRes = await this._query(byPaySql, params);
+
+      return [{
+        totals: [{
+          total_centavos: Number(tot.total_centavos || 0),
+          food_centavos: Number(tot.food_centavos || 0),
+          fee_centavos: Number(tot.fee_centavos || 0),
+          transaction_count: Number(tot.transaction_count || 0),
+          units_sold: Number(tot.units_sold || 0)
+        }],
+        by_payment: byPayRes.rows.map(r => ({
+          _id: r._id,
+          total_centavos: Number(r.total_centavos || 0),
+          transaction_count: Number(r.transaction_count || 0)
+        }))
+      }];
+    }
+
+    // 1. Unwind items for Dish Counts or Top Products
+    if (pipeline.some(s => s.$unwind === '$items')) {
+      const groupStage = pipeline.find(s => s.$group)?.$group;
+      const isDishCounts = (groupStage && (
+        groupStage.quantity !== undefined ||
+        (typeof groupStage._id === 'object' && JSON.stringify(groupStage._id).includes('product_id')) ||
+        groupStage._id === '$items.product_id'
+      )) || pipeline.some(s => s.$match && s.$match['items.product_id'] !== undefined);
+
+      if (isDishCounts) {
+        const sql = `
+          SELECT COALESCE(item->>'product_id', p.id) AS _id,
+                 COALESCE(SUM((item->>'quantity')::int), 0)::int AS quantity
+          FROM sales,
+               jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
+          LEFT JOIN products p ON LOWER(TRIM(p.name)) = LOWER(TRIM(item->>'name'))
+          WHERE ${where} AND (item->>'product_id' IS NOT NULL OR p.id IS NOT NULL)
+          GROUP BY COALESCE(item->>'product_id', p.id)
+        `;
+        const res = await this._query(sql, params);
+        return res.rows.map(r => ({
+          _id: String(r._id),
+          quantity: Number(r.quantity)
+        }));
+      }
+
+      // Top Products query:
+      const sql = `
+        SELECT (item->>'name') AS _id,
+               COALESCE(SUM((item->>'quantity')::int), 0)::int AS units,
+               COALESCE(SUM((item->>'quantity')::int * (item->>'price_centavos')::bigint), 0)::bigint AS revenue
+        FROM sales,
+             jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
+        WHERE ${where} AND (item->>'quantity')::int > 0
+        GROUP BY (item->>'name')
+        ORDER BY units DESC, _id ASC
+        LIMIT 6
+      `;
+      const res = await this._query(sql, params);
+      return res.rows.map(r => ({
+        _id: r._id,
+        units: Number(r.units),
+        revenue: Number(r.revenue)
+      }));
+    }
+
+    // 2. Group Totals
     const groupStage = pipeline.find(s => s.$group)?.$group;
     if (groupStage) {
       // By payment method
@@ -673,27 +784,6 @@ export class PostgresCollection {
           units_sold: Number(r.units_sold || 0)
         }];
       }
-    }
-
-    // 2. Unwind items for Top Products
-    if (pipeline.some(s => s.$unwind === '$items')) {
-      const sql = `
-        SELECT (item->>'name') AS _id,
-               COALESCE(SUM((item->>'quantity')::int), 0)::int AS units,
-               COALESCE(SUM((item->>'quantity')::int * (item->>'price_centavos')::bigint), 0)::bigint AS revenue
-        FROM sales,
-             jsonb_array_elements(CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) AS item
-        WHERE ${where} AND (item->>'quantity')::int > 0
-        GROUP BY (item->>'name')
-        ORDER BY units DESC, _id ASC
-        LIMIT 6
-      `;
-      const res = await this._query(sql, params);
-      return res.rows.map(r => ({
-        _id: r._id,
-        units: Number(r.units),
-        revenue: Number(r.revenue)
-      }));
     }
 
     return [];
