@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const { Pool } = pg;
+pg.types.setTypeParser(20, val => (val === null ? null : parseInt(val, 10)));
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -84,6 +85,17 @@ export async function initSchema(client = getPool()) {
     const sql = fs.readFileSync(schemaPath, 'utf8');
     await client.query(sql);
   }
+  // Ensure essential columns exist on all tables
+  try {
+    await client.query(`
+      ALTER TABLE IF EXISTS counters ADD COLUMN IF NOT EXISTS data JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE IF EXISTS counters ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE IF EXISTS counters ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE IF EXISTS audit_events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE IF EXISTS integrity_guards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE IF EXISTS media_files ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+    `);
+  } catch (_) {}
 }
 
 export async function connect() {
@@ -122,9 +134,16 @@ export function normalizeRow(row) {
   delete doc.data;
   doc._id = row.id;
   doc.id = row.id;
-  // If role_id is numeric string, parse or preserve
-  if (doc.role_id && !isNaN(doc.role_id)) {
-    doc.role_id = Number(doc.role_id);
+
+  const numericKeys = [
+    'role_id', 'seq', 'order_seq', 'revision', 'fee_centavos', 'total_centavos',
+    'food_centavos', 'subtotal_centavos', 'price_centavos', 'cost_centavos',
+    'cash_tendered_centavos', 'change_centavos'
+  ];
+  for (const k of numericKeys) {
+    if (doc[k] !== undefined && doc[k] !== null && !isNaN(doc[k])) {
+      doc[k] = Number(doc[k]);
+    }
   }
   return doc;
 }
@@ -450,8 +469,16 @@ export class PostgresCollection {
 
     const id = String(existing.id || existing._id);
     const validCols = await getTableColumns(this.name, this.client || getPool());
-    const sets = ['data = $2::jsonb', 'updated_at = $3'];
-    const params = [id, JSON.stringify(updatedDoc), updatedDoc.updated_at];
+    const sets = [];
+    const params = [id];
+    if (validCols.has('data')) {
+      params.push(JSON.stringify(updatedDoc));
+      sets.push(`data = $${params.length}::jsonb`);
+    }
+    if (validCols.has('updated_at')) {
+      params.push(updatedDoc.updated_at);
+      sets.push(`updated_at = $${params.length}`);
+    }
 
     const combined = { ...(update.$set || {}), ...(update.$inc ? updatedDoc : {}) };
     for (const [k, v] of Object.entries(combined)) {
@@ -461,10 +488,12 @@ export class PostgresCollection {
       sets.push(`${k} = $${params.length}`);
     }
 
-    await this._query(
-      `UPDATE ${this.name} SET ${sets.join(', ')} WHERE id = $1`,
-      params
-    );
+    if (sets.length > 0) {
+      await this._query(
+        `UPDATE ${this.name} SET ${sets.join(', ')} WHERE id = $1`,
+        params
+      );
+    }
 
     return { matchedCount: 1, modifiedCount: 1 };
   }
