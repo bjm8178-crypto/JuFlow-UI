@@ -81,8 +81,22 @@ async function runMigration() {
 
     for (const collName of collectionsToMigrate) {
       process.stdout.write(`⏳ Migrating collection: ${collName}... `);
-      const docs = await mongoDb.collection(collName).find().toArray();
+      let docs = [];
+      try {
+        docs = await mongoDb.collection(collName).find().toArray();
+      } catch (e) {
+        console.log(`(skipped: ${e.message})`);
+        continue;
+      }
       let migrated = 0;
+
+      // Fetch table column names from information_schema
+      const colRes = await pgClient.query(`
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_name = $1 AND table_schema = 'public'
+      `, [collName]);
+      const tableColumns = new Map(colRes.rows.map(r => [r.column_name, r.data_type]));
 
       for (const doc of docs) {
         const id = String(doc._id);
@@ -94,23 +108,67 @@ async function runMigration() {
         const createdAt = doc.created_at ? new Date(doc.created_at) : new Date();
         const updatedAt = doc.updated_at ? new Date(doc.updated_at) : new Date();
 
-        // Base insert into data JSONB
+        // Base insert checking available columns
+        const hasData = tableColumns.has('data');
+        const hasCreatedAt = tableColumns.has('created_at');
+        const hasUpdatedAt = tableColumns.has('updated_at');
+
+        const baseCols = ['id'];
+        const basePlaceholders = ['$1'];
+        const baseParams = [id];
+
+        if (hasData) {
+          baseCols.push('data');
+          basePlaceholders.push(`$${baseParams.length + 1}::jsonb`);
+          baseParams.push(JSON.stringify(cleanDoc));
+        }
+        if (hasCreatedAt) {
+          baseCols.push('created_at');
+          basePlaceholders.push(`$${baseParams.length + 1}`);
+          baseParams.push(createdAt);
+        }
+        if (hasUpdatedAt) {
+          baseCols.push('updated_at');
+          basePlaceholders.push(`$${baseParams.length + 1}`);
+          baseParams.push(updatedAt);
+        }
+
+        const onConflictSet = [];
+        if (hasData) onConflictSet.push('data = EXCLUDED.data');
+        if (hasUpdatedAt) onConflictSet.push('updated_at = EXCLUDED.updated_at');
+        const conflictClause = onConflictSet.length
+          ? `ON CONFLICT (id) DO UPDATE SET ${onConflictSet.join(', ')}`
+          : 'ON CONFLICT (id) DO NOTHING';
+
         const baseSql = `
-          INSERT INTO ${collName} (id, data, created_at, updated_at)
-          VALUES ($1, $2::jsonb, $3, $4)
-          ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at
+          INSERT INTO ${collName} (${baseCols.join(', ')})
+          VALUES (${basePlaceholders.join(', ')})
+          ${conflictClause}
         `;
-        await pgClient.query(baseSql, [id, JSON.stringify(cleanDoc), createdAt, updatedAt]);
+        await pgClient.query(baseSql, baseParams);
 
         // Populate known relational columns
         const colUpdates = [];
         const colParams = [id];
         for (const [key, val] of Object.entries(cleanDoc)) {
           if (['id', 'data', 'created_at', 'updated_at'].includes(key)) continue;
+          if (!tableColumns.has(key)) continue;
+
+          const dataType = tableColumns.get(key);
           let formattedVal = val;
-          if (val && typeof val === 'object' && !(val instanceof Date)) {
-            formattedVal = JSON.stringify(val);
+
+          if (val && typeof val === 'object') {
+            if (val._bsontype === 'ObjectID' || val.constructor?.name === 'ObjectId') {
+              formattedVal = val.toString();
+            } else if (val instanceof Date) {
+              formattedVal = val;
+            } else if (dataType === 'jsonb') {
+              formattedVal = JSON.stringify(val);
+            } else {
+              formattedVal = JSON.stringify(val);
+            }
           }
+
           colParams.push(formattedVal);
           colUpdates.push(`${key} = $${colParams.length}`);
         }
@@ -119,7 +177,7 @@ async function runMigration() {
           try {
             await pgClient.query(`UPDATE ${collName} SET ${colUpdates.join(', ')} WHERE id = $1`, colParams);
           } catch (e) {
-            // Column might not exist in dedicated columns, which is fine since data JSONB has the whole doc
+            // Silently continue if type coercion fails on non-critical column
           }
         }
 

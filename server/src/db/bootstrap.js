@@ -13,6 +13,9 @@ const ROLES = [
  *  - if there is NO admin yet and ADMIN_USERNAME + ADMIN_PASSWORD are set, creates the first admin
  */
 export async function bootstrapAdmin(db, env = process.env, transaction = withTransaction) {
+  const runTx = (db && !db.client && typeof db.command !== 'function' && typeof db.listCollections !== 'function')
+    ? (work => work(db))
+    : transaction;
   for (const r of ROLES) {
     try {
       await db.collection('roles').updateOne({ _id: r._id }, { $setOnInsert: { ...r, ...timestamps() } }, { upsert: true });
@@ -57,7 +60,7 @@ export async function bootstrapAdmin(db, env = process.env, transaction = withTr
 
   // Use transaction if supported by DB client, otherwise fallback to standard insert
   try {
-    const result = await transaction(async (database, session) => {
+    const result = await runTx(async (database, session) => {
       if (typeof database.collection('integrity_guards')?.updateOne === 'function') {
         await database.collection('integrity_guards').updateOne(
           { _id: 'active_admins' }, { $inc: { revision: 1 } }, { session, upsert: true }
@@ -78,6 +81,9 @@ export async function bootstrapAdmin(db, env = process.env, transaction = withTr
 }
 
 export async function ensureRider(db, env = process.env, transaction = withTransaction) {
+  const runTx = (db && !db.client && typeof db.command !== 'function' && typeof db.listCollections !== 'function')
+    ? (work => work(db))
+    : transaction;
   const password = env.RIDER_PASSWORD;
   if (!password) return;
   if (typeof password !== 'string' || password.length < 8) {
@@ -89,9 +95,11 @@ export async function ensureRider(db, env = process.env, transaction = withTrans
   const passwordHash = existing ? null : await bcrypt.hash(password, 12);
   const run = async (database, session) => {
     // Serialize bootstrap with account/link mutations, including different usernames.
-    await database.collection('integrity_guards').updateOne(
-      { _id: 'active_admins' }, { $inc: { revision: 1 } }, { session, upsert: true }
-    );
+    if (typeof database.collection('integrity_guards')?.updateOne === 'function') {
+      await database.collection('integrity_guards').updateOne(
+        { _id: 'active_admins' }, { $inc: { revision: 1 } }, { session, upsert: true }
+      );
+    }
     let user = await database.collection('users').findOne({ role_id: 3 }, { session, sort: { created_at: 1, _id: 1 } });
     let createdRider = false;
     if (!user) {
@@ -111,10 +119,10 @@ export async function ensureRider(db, env = process.env, transaction = withTrans
     }
     return { createdRider };
   };
-  try { return await transaction(run); }
+  try { return await runTx(run); }
   catch (error) {
     if (error.code !== 11000 || !await db.collection('users').findOne({ role_id: 3 })) throw error;
-    return transaction(run);
+    return runTx(run);
   }
 }
 

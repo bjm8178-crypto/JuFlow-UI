@@ -215,6 +215,23 @@ function parseFilter(filter = {}, params = []) {
   return { where: clauses.length ? clauses.join(' AND ') : '1=1', params };
 }
 
+const tableColumnCache = new Map();
+async function getTableColumns(tableName, client) {
+  if (tableColumnCache.has(tableName)) return tableColumnCache.get(tableName);
+  try {
+    const res = await client.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = $1 AND table_schema = 'public'
+    `, [tableName]);
+    const set = new Set(res.rows.map(r => r.column_name));
+    tableColumnCache.set(tableName, set);
+    return set;
+  } catch (_) {
+    return new Set();
+  }
+}
+
 export class PostgresCollection {
   constructor(name, client = null) {
     this.name = name;
@@ -233,7 +250,6 @@ export class PostgresCollection {
       const res = await this._query(sql, params);
       return normalizeRow(res.rows[0]);
     } catch (e) {
-      // If table doesn't exist or column error, check fallback
       return null;
     }
   }
@@ -301,35 +317,32 @@ export class PostgresCollection {
     cleanDoc.created_at = cleanDoc.created_at || new Date();
     cleanDoc.updated_at = cleanDoc.updated_at || new Date();
 
-    // Extract table-specific fields
-    const keys = Object.keys(cleanDoc);
-    const values = Object.values(cleanDoc);
+    const validCols = await getTableColumns(this.name, this.client || getPool());
+    const cols = ['id', 'data', 'created_at', 'updated_at'];
+    const placeholders = ['$1', '$2::jsonb', '$3', '$4'];
+    const params = [String(id), JSON.stringify(cleanDoc), cleanDoc.created_at, cleanDoc.updated_at];
 
-    // Save full document in data JSONB
+    for (const [k, v] of Object.entries(cleanDoc)) {
+      if (['id', 'data', 'created_at', 'updated_at'].includes(k)) continue;
+      if (!validCols.has(k)) continue;
+      cols.push(k);
+      params.push((v instanceof ObjectId) ? v.id : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v));
+      placeholders.push(`$${params.length}`);
+    }
+
+    const onConflictSets = ['data = EXCLUDED.data', 'updated_at = EXCLUDED.updated_at'];
+    for (const col of cols) {
+      if (['id', 'data', 'created_at', 'updated_at'].includes(col)) continue;
+      onConflictSets.push(`${col} = EXCLUDED.${col}`);
+    }
+
     const sql = `
-      INSERT INTO ${this.name} (id, data, created_at, updated_at)
-      VALUES ($1, $2::jsonb, $3, $4)
-      ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at
+      INSERT INTO ${this.name} (${cols.join(', ')})
+      VALUES (${placeholders.join(', ')})
+      ON CONFLICT (id) DO UPDATE SET ${onConflictSets.join(', ')}
       RETURNING *
     `;
-    await this._query(sql, [String(id), JSON.stringify(cleanDoc), cleanDoc.created_at, cleanDoc.updated_at]);
-
-    // Also update known columns if columns exist in the table
-    try {
-      const updates = [];
-      const colParams = [String(id)];
-      for (const [k, v] of Object.entries(cleanDoc)) {
-        if (['id', 'data', 'created_at', 'updated_at'].includes(k)) continue;
-        const val = (v instanceof ObjectId) ? v.id : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v);
-        colParams.push(val);
-        updates.push(`${k} = $${colParams.length}`);
-      }
-      if (updates.length) {
-        await this._query(`UPDATE ${this.name} SET ${updates.join(', ')} WHERE id = $1`, colParams);
-      }
-    } catch (_) {
-      // Ignore column update if column doesn't exist; data JSONB has the authoritative document
-    }
+    await this._query(sql, params);
 
     return { insertedId: id, acknowledged: true };
   }
@@ -370,26 +383,22 @@ export class PostgresCollection {
     updatedDoc.updated_at = new Date();
 
     const id = String(existing.id || existing._id);
-    await this._query(
-      `UPDATE ${this.name} SET data = $2::jsonb, updated_at = $3 WHERE id = $1`,
-      [id, JSON.stringify(updatedDoc), updatedDoc.updated_at]
-    );
+    const validCols = await getTableColumns(this.name, this.client || getPool());
+    const sets = ['data = $2::jsonb', 'updated_at = $3'];
+    const params = [id, JSON.stringify(updatedDoc), updatedDoc.updated_at];
 
-    // Also update known columns
-    try {
-      const updates = [];
-      const colParams = [id];
-      const combined = { ...(update.$set || {}), ...(update.$inc ? updatedDoc : {}) };
-      for (const [k, v] of Object.entries(combined)) {
-        if (['id', 'data'].includes(k)) continue;
-        const val = (v instanceof ObjectId) ? v.id : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v);
-        colParams.push(val);
-        updates.push(`${k} = $${colParams.length}`);
-      }
-      if (updates.length) {
-        await this._query(`UPDATE ${this.name} SET ${updates.join(', ')} WHERE id = $1`, colParams);
-      }
-    } catch (_) {}
+    const combined = { ...(update.$set || {}), ...(update.$inc ? updatedDoc : {}) };
+    for (const [k, v] of Object.entries(combined)) {
+      if (['id', 'data', 'created_at', 'updated_at'].includes(k)) continue;
+      if (!validCols.has(k)) continue;
+      params.push((v instanceof ObjectId) ? v.id : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v));
+      sets.push(`${k} = $${params.length}`);
+    }
+
+    await this._query(
+      `UPDATE ${this.name} SET ${sets.join(', ')} WHERE id = $1`,
+      params
+    );
 
     return { matchedCount: 1, modifiedCount: 1 };
   }
@@ -464,7 +473,7 @@ export class PostgresCollection {
       }
 
       // By hour
-      if (typeof groupStage._id === 'object' && groupStage._id.$hour) {
+      if (groupStage._id && typeof groupStage._id === 'object' && groupStage._id.$hour) {
         const sql = `
           SELECT EXTRACT(HOUR FROM sale_time AT TIME ZONE 'Asia/Manila')::int AS _id,
                  COALESCE(SUM(total_centavos), 0)::bigint AS total
@@ -478,7 +487,7 @@ export class PostgresCollection {
       }
 
       // By day (last 7 days)
-      if (typeof groupStage._id === 'object' && groupStage._id.$dateToString && groupStage._id.$dateToString.format === '%Y-%m-%d') {
+      if (groupStage._id && typeof groupStage._id === 'object' && groupStage._id.$dateToString && groupStage._id.$dateToString.format === '%Y-%m-%d') {
         const sql = `
           SELECT TO_CHAR(sale_time AT TIME ZONE 'Asia/Manila', 'YYYY-MM-DD') AS _id,
                  COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos
@@ -492,7 +501,7 @@ export class PostgresCollection {
       }
 
       // By month (past 6 months)
-      if (typeof groupStage._id === 'object' && groupStage._id.$dateToString && groupStage._id.$dateToString.format === '%Y-%m') {
+      if (groupStage._id && typeof groupStage._id === 'object' && groupStage._id.$dateToString && groupStage._id.$dateToString.format === '%Y-%m') {
         const sql = `
           SELECT TO_CHAR(sale_time AT TIME ZONE 'Asia/Manila', 'YYYY-MM') AS _id,
                  COALESCE(SUM(total_centavos), 0)::bigint AS total_centavos,

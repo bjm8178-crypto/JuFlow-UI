@@ -22,7 +22,7 @@ function matches(doc, query) {
   return Object.entries(query).every(([key, expected]) => {
     const actual = values(doc, key);
     if (expected === null) return actual.some(value => value == null);
-    if (expected && typeof expected === 'object' && !(expected instanceof ObjectId) && !(expected instanceof Date)) {
+    if (expected && typeof expected === 'object' && !(expected instanceof ObjectId) && expected?.constructor?.name !== 'ObjectId' && !(expected instanceof Date)) {
       return Object.entries(expected).every(([op, value]) => {
         if (op === '$ne') return actual.every(item => !eq(item, value));
         if (op === '$in') return actual.some(item => value.some(candidate => eq(item, candidate)));

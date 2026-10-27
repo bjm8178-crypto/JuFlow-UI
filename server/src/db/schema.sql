@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS roles (
   id VARCHAR(64) PRIMARY KEY,
-  name VARCHAR(50) UNIQUE NOT NULL,
+  name VARCHAR(50) UNIQUE,
   description TEXT,
   permissions JSONB DEFAULT '[]'::jsonb,
   data JSONB DEFAULT '{}'::jsonb,
@@ -12,11 +12,11 @@ CREATE TABLE IF NOT EXISTS roles (
 
 CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(64) PRIMARY KEY,
-  username VARCHAR(100) UNIQUE NOT NULL,
+  username VARCHAR(100) UNIQUE,
   email VARCHAR(150),
   phone VARCHAR(50),
   role_id VARCHAR(64),
-  password_hash VARCHAR(255) NOT NULL,
+  password_hash VARCHAR(255),
   full_name VARCHAR(150),
   is_active BOOLEAN DEFAULT TRUE,
   failed_attempts INT DEFAULT 0,
@@ -30,11 +30,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_partial ON users(email) WHERE 
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
   id VARCHAR(64) PRIMARY KEY,
-  user_id VARCHAR(64) NOT NULL,
+  user_id VARCHAR(64),
   token_hash VARCHAR(64) UNIQUE,
   ip_address VARCHAR(100),
   user_agent TEXT,
-  expires_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ,
   revoked_at TIMESTAMPTZ,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -45,7 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires
 
 CREATE TABLE IF NOT EXISTS categories (
   id VARCHAR(64) PRIMARY KEY,
-  name VARCHAR(100) UNIQUE NOT NULL,
+  name VARCHAR(100) UNIQUE,
   slug VARCHAR(100),
   sort_order INT DEFAULT 0,
   is_active BOOLEAN DEFAULT TRUE,
@@ -57,10 +57,10 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS products (
   id VARCHAR(64) PRIMARY KEY,
   category_id VARCHAR(64),
-  name VARCHAR(150) NOT NULL,
+  name VARCHAR(150),
   name_key VARCHAR(150),
   description TEXT,
-  price_centavos INT NOT NULL DEFAULT 0,
+  price_centavos INT DEFAULT 0,
   cost_centavos INT DEFAULT 0,
   is_available BOOLEAN DEFAULT TRUE,
   is_active BOOLEAN DEFAULT TRUE,
@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_products_available_active ON products(is_availabl
 
 CREATE TABLE IF NOT EXISTS customers (
   id VARCHAR(64) PRIMARY KEY,
-  name VARCHAR(150) NOT NULL,
+  name VARCHAR(150),
   phone VARCHAR(50),
   messenger VARCHAR(100),
   address TEXT,
@@ -97,8 +97,8 @@ CREATE INDEX IF NOT EXISTS idx_customers_is_active ON customers(is_active);
 
 CREATE TABLE IF NOT EXISTS delivery_zones (
   id VARCHAR(64) PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  fee_centavos INT NOT NULL DEFAULT 0,
+  name VARCHAR(100),
+  fee_centavos INT DEFAULT 0,
   estimated_minutes INT DEFAULT 30,
   sort_order INT DEFAULT 0,
   is_active BOOLEAN DEFAULT TRUE,
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS delivery_zones (
 CREATE TABLE IF NOT EXISTS riders (
   id VARCHAR(64) PRIMARY KEY,
   user_id VARCHAR(64),
-  name VARCHAR(150) NOT NULL,
+  name VARCHAR(150),
   phone VARCHAR(50),
   vehicle_type VARCHAR(50),
   vehicle_plate VARCHAR(50),
@@ -128,15 +128,15 @@ CREATE INDEX IF NOT EXISTS idx_riders_phone ON riders(phone);
 
 CREATE TABLE IF NOT EXISTS orders (
   id VARCHAR(64) PRIMARY KEY,
-  order_number VARCHAR(50) UNIQUE NOT NULL,
+  order_number VARCHAR(50) UNIQUE,
   order_seq INT,
   idempotency_key VARCHAR(100),
   customer_id VARCHAR(64),
   customer JSONB DEFAULT '{}'::jsonb,
-  items JSONB NOT NULL DEFAULT '[]'::jsonb,
-  subtotal_centavos INT NOT NULL DEFAULT 0,
-  fee_centavos INT NOT NULL DEFAULT 0,
-  total_centavos INT NOT NULL DEFAULT 0,
+  items JSONB DEFAULT '[]'::jsonb,
+  subtotal_centavos INT DEFAULT 0,
+  fee_centavos INT DEFAULT 0,
+  total_centavos INT DEFAULT 0,
   cash_tendered_centavos INT,
   change_centavos INT,
   payment_method VARCHAR(50),
@@ -186,14 +186,14 @@ CREATE TABLE IF NOT EXISTS sales (
   order_id VARCHAR(64),
   void_id VARCHAR(100),
   event_id VARCHAR(100),
-  sale_time TIMESTAMPTZ NOT NULL,
-  received_at TIMESTAMPTZ NOT NULL,
-  source VARCHAR(50) NOT NULL,
-  payment_method VARCHAR(50) NOT NULL,
-  items JSONB NOT NULL DEFAULT '[]'::jsonb,
-  food_centavos INT NOT NULL DEFAULT 0,
-  fee_centavos INT NOT NULL DEFAULT 0,
-  total_centavos INT NOT NULL DEFAULT 0,
+  sale_time TIMESTAMPTZ,
+  received_at TIMESTAMPTZ,
+  source VARCHAR(50),
+  payment_method VARCHAR(50),
+  items JSONB DEFAULT '[]'::jsonb,
+  food_centavos INT DEFAULT 0,
+  fee_centavos INT DEFAULT 0,
+  total_centavos INT DEFAULT 0,
   cash_tendered_centavos INT,
   gcash_reference VARCHAR(100),
   recorded_by VARCHAR(100),
@@ -215,8 +215,8 @@ CREATE INDEX IF NOT EXISTS idx_sales_is_test_sale ON sales(is_test_sale);
 
 CREATE TABLE IF NOT EXISTS settings (
   id VARCHAR(64) PRIMARY KEY,
-  key VARCHAR(100) UNIQUE NOT NULL,
-  value JSONB NOT NULL,
+  key VARCHAR(100) UNIQUE,
+  value JSONB,
   description TEXT,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE TABLE IF NOT EXISTS daily_menu (
   id VARCHAR(64) PRIMARY KEY,
-  date VARCHAR(20) UNIQUE NOT NULL,
+  date VARCHAR(20) UNIQUE,
   dishes JSONB DEFAULT '[]'::jsonb,
   data JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -246,7 +246,10 @@ CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created
 
 CREATE TABLE IF NOT EXISTS counters (
   id VARCHAR(64) PRIMARY KEY,
-  seq BIGINT NOT NULL DEFAULT 1000
+  seq BIGINT DEFAULT 1000,
+  data JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS audit_events (
