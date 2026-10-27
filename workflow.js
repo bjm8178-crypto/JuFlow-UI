@@ -40,8 +40,16 @@
     return `${money(order.total_centavos)} total · ${method === 'gcash' ? 'GCash' : method === 'exact' ? 'Cash exact' : 'Cash'} · ${order.payment_status === 'paid' ? 'Paid' : 'Payment pending'}`;
   }
   function customerList() {
-    const query = $('#customer-search').value.toLowerCase();
-    $('#customer-list').innerHTML = state.customers.filter(c => [c.name, c.messenger, c.phone].join(' ').toLowerCase().includes(query)).map(c => `<button class="customer-choice ${state.selected === c._id ? 'selected' : ''}" data-customer="${E(c._id)}"><span class="avatar">${E(c.name.slice(0, 2).toUpperCase())}</span><span><strong>${E(c.name)}</strong><small>${E(c.phone)}</small></span></button>`).join('') || '<p class="empty">No matching customers.</p>';
+    const query = ($('#customer-search')?.value || '').trim().toLowerCase();
+    const filtered = state.customers.filter(c => [c.name, c.messenger, c.phone].join(' ').toLowerCase().includes(query));
+    if (filtered.length > 0 && !filtered.some(c => c._id === state.selected)) {
+      state.selected = filtered[0]._id;
+      loadHistory();
+    } else if (filtered.length === 0 && state.selected !== null) {
+      state.selected = null;
+      profile();
+    }
+    $('#customer-list').innerHTML = filtered.map(c => `<button class="customer-choice ${state.selected === c._id ? 'selected' : ''}" data-customer="${E(c._id)}"><span class="avatar">${E(c.name.slice(0, 2).toUpperCase())}</span><span><strong>${E(c.name)}</strong><small>${E(c.phone)}</small></span></button>`).join('') || '<p class="empty">No matching customers.</p>';
   }
   function profile(loading = false) {
     const c = state.customers.find(c => c._id === state.selected);
@@ -207,10 +215,12 @@
     $('#payment-summary').textContent = 'Estimated total ' + money(order.total) + '. The server confirms the final total.';
   }
   function newOrder(c) {
+    const customer = c || state.customers.find(item => item._id === state.selected);
+    if (!customer) { notice('Please select a customer first.'); return; }
     const form = $('#order-form'); form.reset(); report(form, { message: '' }); orderAttempt = null;
-    form.dataset.customer = c._id; $('#order-customer-name').textContent = c.name;
-    const pin = hasPin(c);
-    $('#order-address').textContent = c.address + ' · ' + (c.landmark || 'No landmark') + (pin ? ' · 📍 Pinned' : ' · ⚠️ No pin saved');
+    form.dataset.customer = customer._id; $('#order-customer-name').textContent = customer.name;
+    const pin = hasPin(customer);
+    $('#order-address').textContent = customer.address + ' · ' + (customer.landmark || 'No landmark') + (pin ? ' · 📍 Pinned' : ' · ⚠️ No pin saved');
     $('#item-rows').innerHTML = ''; addItem(); totals(); $('#order-dialog').showModal();
     // Refresh today's menu in the background; swap in the dropdown if the first row is still untouched.
     loadMenu().then(() => {
@@ -246,9 +256,18 @@
   }
   function renderOrders() {
     const filter = $('#order-filter').value;
+    const search = ($('#order-search')?.value || '').trim().toLowerCase();
     const terminal = order => ['delivered', 'cancelled'].includes(order.status);
-    const orders = state.orders.filter(order => filter === 'all' || (filter === 'delivered' ? terminal(order) : !terminal(order)));
-    $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge amber">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${progress(order)}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
+    let orders = state.orders.filter(order => filter === 'all' || (filter === 'delivered' ? terminal(order) : !terminal(order)));
+    if (search) {
+      orders = orders.filter(order =>
+        (order.order_number || '').toLowerCase().includes(search) ||
+        (order.customer?.name || '').toLowerCase().includes(search) ||
+        (order.customer?.phone || '').toLowerCase().includes(search) ||
+        (order.customer?.address || '').toLowerCase().includes(search)
+      );
+    }
+    $('#order-list').innerHTML = orders.map(order => `<article class="panel order-card"><div class="profile-heading"><div><span class="eyebrow">${E(order.order_number)}</span><h2>${E(order.customer?.name || 'Customer unavailable')}</h2></div><span class="badge ${order.status === 'delivered' ? 'green' : 'amber'}">${E(statusLabel(order))}</span></div><p class="map-help">${E(order.customer?.address || 'No saved address')}<br>${E(order.customer?.landmark || '')}</p><ul class="food-list">${order.items.map(item => `<li><span>${item.quantity} x ${E(item.name)}</span><strong>${money(item.quantity * item.price_centavos)}</strong></li>`).join('')}<li><span>Delivery fee</span><strong>${money(order.fee_centavos)}</strong></li></ul><p class="payment-summary">${E(payment(order))}</p><p class="map-help">${E(order.notes || 'No preparation notes')}</p><div class="order-actions">${progress(order)}</div><p class="form-error" data-order-error="${E(order._id)}" role="alert"></p></article>`).join('') || '<div class="panel empty"><h2>No orders in this view.</h2><a href="customers.html">Open Customers</a></div>';
   }
   async function deleteCustomer(c) {
     if (!confirm(`Delete ${c.name}?\n\nThey will no longer appear in Customers or when creating orders. Past orders and sales are kept.`)) return;
@@ -365,6 +384,7 @@
     ['customer-dialog', 'order-dialog'].forEach(id => $('#' + id).addEventListener('cancel', event => { if ($('#' + id).querySelector('form').dataset.busy === 'true') event.preventDefault(); }));
   } else if ($('#order-list')) {
     $('#order-filter').onchange = renderOrders;
+    if ($('#order-search')) $('#order-search').oninput = renderOrders;
     setInterval(() => { if (!document.hidden && !document.querySelector('dialog[open]')) refresh(true); }, 10000);
   }
   $('#refresh-records').onclick = refresh;

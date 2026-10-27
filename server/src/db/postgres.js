@@ -18,8 +18,8 @@ export class ObjectId {
   constructor(id) {
     if (id instanceof ObjectId) {
       this.id = id.id;
-    } else if (id && typeof id === 'object' && id.id) {
-      this.id = String(id.id);
+    } else if (id && typeof id === 'object' && (id.id || typeof id.toHexString === 'function' || id._bsontype === 'ObjectId')) {
+      this.id = String(id.id || (typeof id.toHexString === 'function' ? id.toHexString() : id));
     } else {
       this.id = id ? String(id) : crypto.randomBytes(12).toString('hex');
     }
@@ -28,13 +28,32 @@ export class ObjectId {
   toJSON() { return this.id; }
   equals(other) {
     if (!other) return false;
-    return this.id === (other instanceof ObjectId ? other.id : String(other));
+    return this.id === (other instanceof ObjectId ? other.id : (typeof other === 'object' && other.id ? String(other.id) : String(other)));
   }
+}
+
+export function isObjectId(v) {
+  if (!v) return false;
+  if (v instanceof ObjectId) return true;
+  if (typeof v === 'object' && (v._bsontype === 'ObjectId' || v.constructor?.name === 'ObjectId' || typeof v.toHexString === 'function')) return true;
+  return false;
+}
+
+export function extractId(v) {
+  if (!v) return null;
+  if (v instanceof ObjectId) return v.id;
+  if (typeof v === 'object') {
+    if (v.id) return String(v.id);
+    if (typeof v.toHexString === 'function') return v.toHexString();
+    if (typeof v.toString === 'function') return v.toString();
+  }
+  return String(v);
 }
 
 export function toObjectId(id) {
   if (!id) return null;
   if (id instanceof ObjectId) return id;
+  if (isObjectId(id)) return new ObjectId(extractId(id));
   const s = typeof id === 'object' && id.id ? String(id.id) : String(id);
   if (!/^[a-f\d]{24}$/i.test(s) && !/^\d+$/.test(s) && !/^[0-9a-f-]{36}$/i.test(s)) return null;
   return new ObjectId(s);
@@ -242,7 +261,7 @@ function parseFilter(filter = {}, params = [], tableName = null) {
     const colName = (key === '_id' || key === 'id') ? 'id' : key;
 
     // Handle operator objects: { $ne, $gte, $lt, $gt, $lte, $in, $regex }
-    if (val && typeof val === 'object' && !(val instanceof Date) && !(val instanceof ObjectId)) {
+    if (val && typeof val === 'object' && !(val instanceof Date) && !isObjectId(val)) {
       if ('$ne' in val) {
         if (val.$ne === null) {
           clauses.push(isCol ? `(${colName} IS NOT NULL)` : `(data->'${key}' IS NOT NULL)`);
@@ -251,7 +270,7 @@ function parseFilter(filter = {}, params = [], tableName = null) {
         } else if (val.$ne === true) {
           clauses.push(isCol ? `(COALESCE(${colName}, false) IS NOT TRUE)` : `(COALESCE((data->>'${key}')::boolean, false) IS NOT TRUE)`);
         } else {
-          const target = String(val.$ne instanceof ObjectId ? val.$ne.id : val.$ne);
+          const target = String(isObjectId(val.$ne) ? extractId(val.$ne) : val.$ne);
           params.push(target);
           if (isCol) {
             clauses.push(`(${colName} IS DISTINCT FROM $${params.length})`);
@@ -277,12 +296,12 @@ function parseFilter(filter = {}, params = [], tableName = null) {
         clauses.push(isCol ? `${colName} < $${params.length}` : `(data->>'${key}')::numeric < $${params.length}`);
       }
       if ('$in' in val && Array.isArray(val.$in)) {
-        const mapped = val.$in.map(v => String(v instanceof ObjectId ? v.id : v));
+        const mapped = val.$in.map(v => String(isObjectId(v) ? extractId(v) : v));
         params.push(mapped);
         clauses.push(isCol ? `${colName} = ANY($${params.length})` : `data->>'${key}' = ANY($${params.length})`);
       }
       if ('$nin' in val && Array.isArray(val.$nin)) {
-        const mapped = val.$nin.map(v => String(v instanceof ObjectId ? v.id : v));
+        const mapped = val.$nin.map(v => String(isObjectId(v) ? extractId(v) : v));
         params.push(mapped);
         clauses.push(isCol
           ? `(${colName} IS NULL OR NOT (${colName} = ANY($${params.length})))`
@@ -307,7 +326,7 @@ function parseFilter(filter = {}, params = [], tableName = null) {
     if (val === null) {
       clauses.push(isCol ? `(${colName} IS NULL)` : `(data->'${key}' IS NULL)`);
     } else {
-      const v = (val instanceof ObjectId) ? val.id : val;
+      const v = isObjectId(val) ? extractId(val) : val;
       params.push(v);
       if (key === '_id' || key === 'id') {
         clauses.push(`id = $${params.length}::text`);
@@ -433,7 +452,7 @@ export class PostgresCollection {
       if (['id', 'data', 'created_at', 'updated_at'].includes(k)) continue;
       if (!validCols.has(k)) continue;
       cols.push(k);
-      params.push((v instanceof ObjectId) ? v.id : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v));
+      params.push(isObjectId(v) ? extractId(v) : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v));
       placeholders.push(`$${params.length}`);
     }
 
@@ -467,8 +486,8 @@ export class PostgresCollection {
       if (options.upsert) {
         const filterFields = {};
         for (const [k, v] of Object.entries(filter || {})) {
-          if (!k.startsWith('$') && (typeof v !== 'object' || v instanceof Date || v instanceof ObjectId || v === null)) {
-            const val = (v instanceof ObjectId) ? v.id : v;
+          if (!k.startsWith('$') && (typeof v !== 'object' || v instanceof Date || isObjectId(v) || v === null)) {
+            const val = isObjectId(v) ? extractId(v) : v;
             filterFields[k === '_id' ? 'id' : k] = val;
             if (k === '_id') filterFields._id = val;
           }
@@ -488,7 +507,7 @@ export class PostgresCollection {
     let updatedDoc = { ...existing };
     if (update.$set) {
       for (const [k, v] of Object.entries(update.$set)) {
-        updatedDoc[k] = (v instanceof ObjectId) ? v.id : v;
+        updatedDoc[k] = isObjectId(v) ? extractId(v) : v;
       }
     }
     if (update.$inc) {
@@ -499,7 +518,7 @@ export class PostgresCollection {
     if (update.$addToSet) {
       for (const [k, v] of Object.entries(update.$addToSet)) {
         const arr = Array.isArray(updatedDoc[k]) ? [...updatedDoc[k]] : [];
-        const valStr = (v instanceof ObjectId) ? v.id : v;
+        const valStr = isObjectId(v) ? extractId(v) : v;
         if (!arr.some(item => String(item) === String(valStr))) {
           arr.push(valStr);
         }
@@ -509,7 +528,7 @@ export class PostgresCollection {
     if (update.$pull) {
       for (const [k, v] of Object.entries(update.$pull)) {
         const arr = Array.isArray(updatedDoc[k]) ? [...updatedDoc[k]] : [];
-        const valStr = (v instanceof ObjectId) ? v.id : v;
+        const valStr = isObjectId(v) ? extractId(v) : v;
         updatedDoc[k] = arr.filter(item => String(item) !== String(valStr));
       }
     }
@@ -537,7 +556,7 @@ export class PostgresCollection {
     for (const [k, v] of Object.entries(combined)) {
       if (['id', 'data', 'created_at', 'updated_at'].includes(k)) continue;
       if (!validCols.has(k)) continue;
-      params.push((v instanceof ObjectId) ? v.id : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v));
+      params.push(isObjectId(v) ? extractId(v) : (typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v));
       sets.push(`${k} = $${params.length}`);
     }
 

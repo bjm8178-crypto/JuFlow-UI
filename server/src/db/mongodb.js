@@ -267,5 +267,4 @@ export function updateTimestamp() {
   };
 }
 
-const ObjectId = MongoObjectId;
-export { ObjectId };
+export const ObjectId = isPostgres() ? pgDriver.ObjectId : MongoObjectId;
