@@ -140,10 +140,11 @@
     resizeTimer = setTimeout(() => { if (lastData) updateView(lastData); }, 200);
   });
 
-  // Shared bar chart (SVG) with a peso y-axis, so bar heights can be compared across days / hours.
+  // Shared trend line chart (SVG) with a peso y-axis. Points are spread edge to edge.
   // items: [{ label, sub?, value (centavos), tip, today? }]
-  function renderBarChart(items, opts) {
+  function renderLineChart(items, opts) {
     const chart = el('sales-chart');
+    const n = items.length;
     const values = items.map(i => i.value || 0);
     const peak = Math.max(...values, 0);
     const peakIdx = peak > 0 ? values.indexOf(peak) : -1;
@@ -151,38 +152,46 @@
 
     const W = Math.max(300, Math.floor(chart.clientWidth - 40) || 640);
     const H = W < 480 ? 240 : 290;
-    const pad = { l: 52, r: 14, t: 24, b: opts.twoLineLabels ? 44 : 32 };
+    const pad = { l: 52, r: 22, t: 26, b: opts.twoLineLabels ? 46 : 32 };
     const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
     const yMax = niceMax(peak);
+    const x = i => pad.l + (n > 1 ? i / (n - 1) : 0.5) * iw;
     const y = v => pad.t + ih * (1 - v / yMax);
-    const f = n => n.toFixed(1);
-    const slot = iw / items.length;
-    const bw = Math.min(slot * 0.66, 64);
+    const f = k => k.toFixed(1);
+    const every = (opts.labelEvery && W < 480) ? opts.labelEvery : 1;
 
     const grid = [0, 1, 2, 3, 4, 5].map(i => {
       const v = yMax * i / 5;
       return `<line class="trend-grid" x1="${pad.l}" x2="${W - pad.r}" y1="${f(y(v))}" y2="${f(y(v))}"/><text class="trend-axis-label" x="${pad.l - 8}" y="${f(y(v) + 4)}" text-anchor="end">${axisMoney(v)}</text>`;
     }).join('');
 
-    const bars = items.map((it, i) => {
-      const v = values[i];
-      const cx = pad.l + slot * i + slot / 2;
-      const h = v > 0 ? Math.max(3, ih * v / yMax) : 0;
-      const top = pad.t + ih - h;
-      const rect = v > 0
-        ? `<rect class="bar-rect${i === peakIdx ? ' peak' : ''}" x="${f(cx - bw / 2)}" y="${f(top)}" width="${f(bw)}" height="${f(h)}" rx="4"/>`
-        : `<rect class="bar-rect zero" x="${f(cx - bw / 2)}" y="${f(pad.t + ih - 2)}" width="${f(bw)}" height="2" rx="1"/>`;
-      const showValue = v > 0 && (items.length <= 8 || i === peakIdx);
-      const valueLabel = showValue ? `<text class="bar-value" x="${f(cx)}" y="${f(top - 6)}" text-anchor="middle">${axisMoney(v)}</text>` : '';
-      const lbl = it.label ? `<text class="trend-axis-label${it.today ? ' today' : ''}" x="${f(cx)}" y="${H - (opts.twoLineLabels ? 24 : 10)}" text-anchor="middle">${E(it.label)}</text>` : '';
-      const sub = it.sub ? `<text class="trend-axis-label sub${it.today ? ' today' : ''}" x="${f(cx)}" y="${H - 9}" text-anchor="middle">${E(it.sub)}</text>` : '';
-      const hit = `<rect class="bar-hit" x="${f(pad.l + slot * i)}" y="${pad.t}" width="${f(slot)}" height="${f(ih)}"><title>${E(it.tip)} · ${money(v)}</title></rect>`;
-      return `<g>${rect}${valueLabel}${lbl}${sub}${hit}</g>`;
+    const labels = items.map((it, i) => {
+      if (i % every !== 0 || !it.label) return '';
+      const cls = it.today ? ' today' : '';
+      const l1 = `<text class="trend-axis-label${cls}" x="${f(x(i))}" y="${H - (opts.twoLineLabels ? 25 : 10)}" text-anchor="middle">${E(it.label)}</text>`;
+      const l2 = it.sub ? `<text class="trend-axis-label sub${cls}" x="${f(x(i))}" y="${H - 10}" text-anchor="middle">${E(it.sub)}</text>` : '';
+      return l1 + l2;
     }).join('');
 
+    const pts = items.map((it, i) => [x(i), y(values[i])]);
+    const line = pts.map((p, i) => (i ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1])).join(' ');
+    const area = n ? `${line} L${f(pts[n - 1][0])} ${f(y(0))} L${f(pts[0][0])} ${f(y(0))} Z` : '';
+
+    const dots = items.map((it, i) => {
+      const v = values[i];
+      const showDot = opts.dotsEverywhere || v > 0;
+      const showValue = v > 0 && (n <= 8 || i === peakIdx);
+      const valueLabel = showValue ? `<text class="bar-value" x="${f(pts[i][0])}" y="${f(pts[i][1] - 12)}" text-anchor="middle">${axisMoney(v)}</text>` : '';
+      return `<g><circle class="trend-hit" cx="${f(pts[i][0])}" cy="${f(pts[i][1])}" r="11"><title>${E(it.tip)} · ${money(v)}</title></circle>` +
+        (showDot ? `<circle class="trend-dot${i === peakIdx ? ' peak' : ''}" cx="${f(pts[i][0])}" cy="${f(pts[i][1])}" r="${i === peakIdx ? 5 : 3.5}"/>` : '') +
+        valueLabel + '</g>';
+    }).join('');
+
+    const note = opts.note ? `<p class="chart-peak chart-note">${opts.note}</p>` : '';
     chart.innerHTML =
-      `<svg class="trend-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${E(opts.aria)}">${grid}${bars}</svg>` +
-      `<p class="chart-peak">${peakIdx >= 0 ? `${opts.peakText(items[peakIdx])} · ${money(peak)} · ${opts.totalText}: <strong>${money(sum)}</strong>` : E(opts.emptyText)}</p>`;
+      `<svg class="trend-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${E(opts.aria)}">${grid}` +
+      (n ? `<path class="trend-area" d="${area}"/><path class="trend-line" d="${line}"/>` : '') + dots + labels + '</svg>' +
+      `<p class="chart-peak">${peakIdx >= 0 ? `${opts.peakText(items[peakIdx])} · ${money(peak)} · ${opts.totalText}: <strong>${money(sum)}</strong>` : E(opts.emptyText)}</p>` + note;
   }
 
   function weekdayShort(key) {
@@ -192,7 +201,7 @@
     return new Date(key + 'T00:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
   }
 
-  // Weekly: one bar per day for the last 7 days, to see which days sell best.
+  // Weekly: one point per day for the last 7 days, to see which days sell best.
   function renderWeeklyChart(sevenDays) {
     const days = sevenDays || [];
     const items = days.map((d, i) => ({
@@ -202,29 +211,43 @@
       tip: weekdayLong(d._id),
       today: i === days.length - 1
     }));
-    renderBarChart(items, {
+    renderLineChart(items, {
       twoLineLabels: true,
-      aria: 'Sales per day, last 7 days',
+      dotsEverywhere: true,
+      aria: 'Sales trend per day, last 7 days',
       peakText: it => `Best day: <strong>${E(it.tip)}</strong>`,
       totalText: '7-day total',
       emptyText: 'No sales recorded in the last 7 days.'
     });
   }
 
-  // Daily: one bar per hour of the day (12 AM - 11 PM), to see the busiest hours.
+  // Store hours: open 8 AM, close 10 PM. Each point is one hour bucket starting at its label (8a = 8:00-8:59 AM, last = 9p = 9:00-9:59 PM).
+  const OPEN_HOUR = 8, CLOSE_HOUR = 22;
+  function hourShort(h) { return (h % 12 || 12) + (h < 12 ? 'a' : 'p'); }
+
+  // Daily: one point per hour while the store is open, to see the busiest hours.
   function renderDailyChart(byHour) {
     const totals = Array(24).fill(0);
     (byHour || []).forEach(h => { if (h._id >= 0 && h._id < 24) totals[h._id] = h.total || 0; });
-    const items = totals.map((v, h) => ({
-      label: h % 3 === 0 ? (h % 12 || 12) + (h < 12 ? 'a' : 'p') : '',
-      value: v,
-      tip: hourLabel(h) + ' – ' + hourLabel((h + 1) % 24)
-    }));
-    renderBarChart(items, {
-      aria: 'Sales per hour of the day',
+    const items = [];
+for (let h = OPEN_HOUR; h < CLOSE_HOUR; h++) {
+       items.push({
+         label: hourShort(h),
+         value: totals[h],
+         tip: hourLabel(h) + ' – ' + hourLabel(h + 1)
+       });
+     }
+    // Sales rung up outside opening hours (for example test sales) are not drawn, but are reported honestly.
+    let outside = 0;
+    for (let h = 0; h < 24; h++) if (h < OPEN_HOUR || h >= CLOSE_HOUR) outside += totals[h];
+    renderLineChart(items, {
+      dotsEverywhere: false,
+      labelEvery: 2,
+      aria: 'Sales trend per hour, 8 AM to 10 PM',
       peakText: it => `Busiest hour: <strong>${E(it.tip)}</strong>`,
-      totalText: 'Total',
-      emptyText: 'No sales recorded for this date yet.'
+      totalText: 'Total (8 AM – 10 PM)',
+      emptyText: 'No sales recorded between 8 AM and 10 PM yet.',
+      note: outside > 0 ? `Not shown: ${money(outside)} recorded outside store hours (before 8 AM or after 10 PM).` : ''
     });
   }
 
