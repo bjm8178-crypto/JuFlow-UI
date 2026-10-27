@@ -1,19 +1,19 @@
-# Juki Admin Backend API
+# JuKi Admin Backend API
 
-**Ju Kitchen Operations Management System — Node.js + Express + MongoDB**
+**JuKi Kitchen Operations Management System — Node.js + Express**
 
-Complete backend API for Juki Kitchen Operations.
+Complete backend API for JuKi Kitchen Operations.
 
 ---
 
 ## 🎯 Architecture Overview
 
-- **Runtime:** Node.js (ES Modules, Node 18+)
+- **Runtime:** Node.js 20+ (ES Modules)
 - **Framework:** Express 4
-- **Database:** MongoDB (Community Edition / Atlas)
-- **Authentication:** Token-based sessions with hashed tokens (`auth_sessions`), bcrypt password hashing, and role-based access control (RBAC).
+- **Database:** PostgreSQL (production via `DATABASE_URL`). MongoDB support is legacy and being phased out.
+- **Authentication:** HttpOnly cookie sessions with hashed tokens (`auth_sessions`), bcrypt password hashing, and role-based access control (RBAC).
 - **Service Area:** Saog, Marilao, Bulacan (Coordinates: `14.763649, 120.956218`)
-- **Port:** `3000` (API backend) / `8000` (Python admin prototype & cashier receiver)
+- **Port:** `3000` (API backend)
 
 ---
 
@@ -55,24 +55,32 @@ npm install
 
 Copy `.env.example` to `.env`:
 
+**Production (PostgreSQL — recommended):**
+
+```env
+DATABASE_URL=postgres://user:password@host:5432/juflow
+PORT=3000
+NODE_ENV=production
+TZ=Asia/Manila
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=<a-strong-password>
+CORS_ORIGINS=https://your-domain.vercel.app
+TRUST_PROXY=1
+```
+
+> ⚠️ **Never use a default password in production.** The first admin account is created from `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables on Render (or your hosting provider). There is no seed script or hard-coded `admin123` login.
+
+**Local development (MongoDB):**
+
 ```env
 MONGODB_URI=mongodb://localhost:27017
-DB_NAME=juflow
+DB_NAME=juflow_dev
 PORT=3000
 NODE_ENV=development
 TZ=Asia/Manila
-ADMIN_INITIAL_PASSWORD=admin123
 ```
 
-### 3. Seed Database
-
-```bash
-npm run seed
-```
-
-Seeds roles (`admin`, `cashier`, `rider`), initial admin user, Marilao delivery zones, default settings, categories, products, and riders.
-
-### 4. Run Server
+### 3. Run Server
 
 ```bash
 npm run dev      # Development with watch mode
@@ -80,7 +88,7 @@ npm run dev      # Development with watch mode
 npm start        # Production start
 ```
 
-### 5. Run Test Suite
+### 4. Run Test Suite
 
 ```bash
 npm test

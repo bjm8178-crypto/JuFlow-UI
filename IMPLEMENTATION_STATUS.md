@@ -28,6 +28,16 @@
 | Content-Security-Policy in `vercel.json` | Added. Allows inline scripts and styles because the pages use them (see `DEPLOYMENT.md`) |
 | `vercel.json` Render URL | **Still the guessed `https://juflow-api.onrender.com`.** Replace after the first Render deploy and update the pinned URL in `tests/frontend.test.mjs` |
 
+## PostgreSQL support
+
+| Item | Where | State |
+|---|---|---|
+| PostgreSQL connection pool and query helpers | `server/src/db/postgres.js` | In code |
+| PostgreSQL schema definition | `server/src/db/schema.sql` | In code |
+| PostgreSQL data access layer (repositories) | `server/src/db/repositories/` | In code |
+| MongoDB → PostgreSQL migration script | `server/src/db/migrate-mongo-to-pg.js` | In code |
+| Production startup accepts `DATABASE_URL` | `server/src/lib/config.js` (`validateStartup`) | In code. Falls back to `MONGODB_URI` + `DB_NAME` if no PostgreSQL URL is set |
+
 ## Not done or not verified
 
 - Two-device test against a real database (customers, orders, deliveries shared across devices).
@@ -37,5 +47,5 @@
 - `server/src/routes/customer-imports.js` exists but is not mounted and no page uses it.
 - Order, rider-authorization and settlement logic (F03 to F06, F14): present in `server/src/lib` and `services`, but not re-audited for this update.
 - Old prototype files still in the repo and not deployed: `server.py`, `auth.py`, the Python tests, `send_demo_sale.py`, `signup.html`, `admin.html`, `dashboard-mongo.html`. `serve.js` is used by the frontend tests, so keep it.
-- `server/MONGODB_SETUP.md` is outdated (it describes a seed script and an `admin123` login). Do not follow it for production.
+- `server/MONGODB_SETUP.md` has been updated with a deprecation notice. Production uses PostgreSQL via `DATABASE_URL`; the first admin comes from `ADMIN_USERNAME` / `ADMIN_PASSWORD` env vars (no seed script, no default password).
 - No cashier "sold out" toggle or dish categories on the cashier screen.

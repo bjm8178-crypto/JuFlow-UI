@@ -40,7 +40,7 @@ Roughly 80% of the work is making the web pages behave like apps (offline shell,
 
 **Functional gaps that matter for real use**
 
-6. **Offline sales get the wrong timestamp.** The POS never sends `occurred_at`. `server/src/routes/sales.js` only allows backdating for admin or the device token (`allowBackdating: admin || cashierDevice`); a cashier account may only be 5 minutes in the past (`lib/sale.js`). A sale made at 2 pm and synced at 5 pm is stamped 5 pm; synced after midnight, it lands on the next business day in `sales.html`.
+6. **~~Offline sales get the wrong timestamp.~~** ✅ **Fixed.** `server/src/routes/sales.js` now allows backdating for `['admin', 'cashier']` roles, so a cashier account can send `occurred_at` and offline sales keep their real timestamps.
 7. **Cashier cannot create delivery orders in an app.** Order intake lives in `customers.html` / `workflow.js` (admin pages; `auth-guard.js` bounces cashiers to `cashier.html`), although the API allows cashiers on `POST /customers` and `POST /orders`. The intake form also types items manually; the API can price from the menu via `product_id`.
 8. **Two cashier pages with duplicated logic.** The POS keeps its offline queue in a global `pending_sales` key (not per user), and the tab bar does full page loads between them.
 9. **Cash confirmation asks for "integer centavos"** (`cashier.js`). Easy to mistype on a phone.

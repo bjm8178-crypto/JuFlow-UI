@@ -11,4 +11,4 @@ Rider: sees customer address, sets On the way, then Delivered.
 
 Changed files: cashier/{pos,orders,today,me}.js, cashier.css, rider/{jobs,history,me,app}.js, app.js (bell),
 workflow.js, orders.html, users.html, delivery-state.js, admin-deliveries.js, tests/workflow-api-vm.test.mjs,
-dist/ (rebuilt), Mobile/ copies.
+dist/ (rebuilt).
