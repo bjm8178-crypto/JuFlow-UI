@@ -94,6 +94,7 @@ export async function initSchema(client = getPool()) {
       ALTER TABLE IF EXISTS audit_events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
       ALTER TABLE IF EXISTS integrity_guards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
       ALTER TABLE IF EXISTS media_files ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+      ALTER TABLE IF EXISTS orders ALTER COLUMN rider TYPE TEXT;
     `);
   } catch (_) {}
 }

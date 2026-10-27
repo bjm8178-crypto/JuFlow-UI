@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS orders (
   delivery_status VARCHAR(50) DEFAULT 'pending',
   status VARCHAR(50) DEFAULT 'received',
   rider_id VARCHAR(64),
-  rider JSONB,
+  rider TEXT,
   delivery_id VARCHAR(64),
   notes TEXT,
   version INT DEFAULT 1,
@@ -270,7 +270,7 @@ CREATE TABLE IF NOT EXISTS media_files (
   filename VARCHAR(255),
   content_type VARCHAR(100),
   size INT,
-  data BYTEA,
+  data JSONB DEFAULT '{}'::jsonb,
   metadata JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
