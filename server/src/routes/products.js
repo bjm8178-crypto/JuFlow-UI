@@ -1,7 +1,9 @@
 import express from 'express';
-import { getDb, toObjectId } from '../db/mongodb.js';
+import { getDb, toObjectId, isPostgres } from '../db/mongodb.js';
+import { getPool } from '../db/postgres.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { Binary } from 'mongodb';
+
 
 const router = express.Router();
 
@@ -109,11 +111,23 @@ router.post('/:id/image', authenticate, requireRole('admin'), async (req, res, n
     const db = getDb();
     const product = await db.collection('products').findOne({ _id: id });
     if (!product) return res.status(404).json({ error: 'not_found' });
-    await db.collection('product_images').updateOne(
-      { _id: id },
-      { $set: { content_type: contentType, data: new Binary(buf), updated_at: new Date() } },
-      { upsert: true }
-    );
+    if (isPostgres()) {
+      // product_images.data is a BYTEA column on PostgreSQL, so write it with plain SQL (not the Mongo-style layer).
+      await getPool().query(
+        `INSERT INTO product_images (id, content_type, data, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (id) DO UPDATE
+         SET content_type = EXCLUDED.content_type, data = EXCLUDED.data, updated_at = NOW()`,
+        [String(id), contentType, buf]
+      );
+    } else {
+      await db.collection('product_images').updateOne(
+        { _id: id },
+        { $set: { content_type: contentType, data: new Binary(buf), updated_at: new Date() } },
+        { upsert: true }
+      );
+    }
+
     const photoPath = `/api/products/${id}/image?v=${Date.now()}`;
     await db.collection('products').updateOne({ _id: id }, { $set: { photo_path: photoPath, updated_at: new Date() } });
     res.json({ photo_path: photoPath });
@@ -125,13 +139,26 @@ router.get('/:id/image', async (req, res, next) => {
   try {
     const id = toObjectId(req.params.id);
     if (!id) return res.status(400).end();
-    const row = await getDb().collection('product_images').findOne({ _id: id });
-    if (!row) return res.status(404).end();
+    let contentType, bytes;
+    if (isPostgres()) {
+      // PostgreSQL stores the picture in a BYTEA column; read it raw (the generic collection layer would drop it).
+      const result = await getPool().query('SELECT content_type, data FROM product_images WHERE id = $1', [String(id)]);
+      const row = result.rows[0];
+      if (!row || !row.data) return res.status(404).end();
+      contentType = row.content_type;
+      bytes = row.data;
+    } else {
+      const row = await getDb().collection('product_images').findOne({ _id: id });
+      if (!row) return res.status(404).end();
+      contentType = row.content_type;
+      bytes = row.data.buffer;
+    }
     res.set({
-      'Content-Type': row.content_type,
+      'Content-Type': contentType,
       'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
     });
-    res.send(row.data.buffer);
+    res.send(bytes);
+
   } catch (e) { next(e); }
 });
 

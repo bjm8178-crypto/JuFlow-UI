@@ -64,13 +64,24 @@
     if (ok) await setStatus(o, 'cancelled');
   }
 
+  // The server only allows one step at a time (Preparing -> On the way -> Delivered),
+  // plus "back to Preparing" from On the way. Disable the buttons that would be rejected.
+  const NEXT = { preparing: ['on_the_way'], on_the_way: ['delivered', 'preparing'] };
+
   function stepButtons(o) {
     return h('div', { class: 'status-steps', role: 'group', 'aria-label': 'Order status' },
-      STEPS.map(([key, label]) => h('button', {
-        type: 'button', class: o.status === key ? 'on' : '', 'aria-pressed': String(o.status === key), text: label,
-        onclick: (e) => { e.currentTarget.disabled = true; setStatus(o, key); }
-      })));
+      STEPS.map(([key, label]) => {
+        const current = o.status === key;
+        const allowed = (NEXT[o.status] || []).includes(key);
+        return h('button', {
+          type: 'button', class: current ? 'on' : '', 'aria-pressed': String(current), text: label,
+          disabled: !current && !allowed,
+          title: !current && !allowed ? 'Set the earlier status first' : false,
+          onclick: (e) => { e.currentTarget.disabled = true; setStatus(o, key); }
+        });
+      }));
   }
+
 
   function orderCard(o) {
     const c = o.customer || {};
