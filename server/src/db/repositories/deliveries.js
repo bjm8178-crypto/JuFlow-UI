@@ -125,10 +125,22 @@ export const deliveriesRepo = {
     const sets = ['updated_at = NOW()'];
     const params = [rawOrderId];
 
+    // The deliveries table only has a few real columns. Anything else (pickup_time, delivery_time, ...)
+    // is merged into the JSONB "data" column instead of failing with "column does not exist".
+    const REAL_COLUMNS = new Set(['customer_id', 'rider_id', 'status', 'notes']);
+    const extra = {};
     for (const [k, v] of Object.entries(updates)) {
-      if (['id', '_id', 'order_id', 'updated_at'].includes(k)) continue;
-      params.push(v);
-      sets.push(`${k} = $${params.length}`);
+      if (['id', '_id', 'order_id', 'updated_at', 'data', 'created_at'].includes(k)) continue;
+      if (REAL_COLUMNS.has(k)) {
+        params.push(v);
+        sets.push(`${k} = $${params.length}`);
+      } else {
+        extra[k] = v;
+      }
+    }
+    if (Object.keys(extra).length) {
+      params.push(JSON.stringify(extra));
+      sets.push(`data = COALESCE(data, '{}'::jsonb) || $${params.length}::jsonb`);
     }
 
     const sql = `
@@ -138,6 +150,7 @@ export const deliveriesRepo = {
       RETURNING *
     `;
     return await queryOne(clientOrDb, sql, params);
+
   },
 
   async updateNotes(id, expectedVersion, notes, clientOrDb = null) {
