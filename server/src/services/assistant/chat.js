@@ -1,4 +1,4 @@
-import { callGroq, models } from './groq.js';
+import { buildSlots, callProvider, isCooling, markFailure } from './llm.js';
 import { TOOL_DEFS, runTool } from './tools.js';
 import { businessDate } from '../../lib/business-date.js';
 
@@ -8,6 +8,8 @@ import { businessDate } from '../../lib/business-date.js';
 //   2. a separate gatekeeper call decides whether the question is about the business at all,
 //      and an off-topic question never reaches the main model or the database,
 //   3. the main model only gets read-only tools and a strict system prompt.
+// Reliability: if one API key or provider fails, the next slot in the chain answers instead
+// (see llm.js). Each slot gets a fresh conversation, so provider-specific details never mix.
 
 export const REFUSAL = 'Pasensya na, business lang ng JuKi ang masasagot ko: benta, orders, deliveries, riders, menu at customers. / Sorry, I can only answer questions about the JuKi business: sales, orders, deliveries, riders, menu and customers.';
 
@@ -66,7 +68,7 @@ STYLE
 - Add a short practical suggestion only when the data supports it.`;
 }
 
-const GROQ_TOOLS = TOOL_DEFS.map(def => ({
+const TOOLS = TOOL_DEFS.map(def => ({
   type: 'function',
   function: { name: def.name, description: def.description, parameters: def.input_schema }
 }));
@@ -87,14 +89,13 @@ function finalText(content) {
   return text.slice(0, MAX_REPLY_CHARS);
 }
 
-export async function inScope(history, deps = {}) {
-  const call = deps.call || callGroq;
-  const { fast } = models(deps.env || process.env);
+export async function inScope(history, slot, deps = {}) {
+  const call = deps.call || callProvider;
   const transcript = history.slice(-5).map(m => `${m.role.toUpperCase()}: ${m.content.slice(0, 400)}`).join('\n');
-  const result = await call({
-    model: fast,
+  const result = await call(slot, {
+    tier: 'fast',
     messages: [{ role: 'system', content: SCOPE_PROMPT }, { role: 'user', content: transcript }],
-    maxTokens: 4,
+    maxTokens: 256,
     temperature: 0,
     timeoutMs: 10_000
   });
@@ -102,23 +103,19 @@ export async function inScope(history, deps = {}) {
   return verdict.startsWith('YES'); // anything unclear counts as out of scope
 }
 
-export async function answer(rawMessages, deps = {}) {
-  const call = deps.call || callGroq;
+// One full tool-using conversation on one slot.
+async function converse(history, slot, deps) {
+  const call = deps.call || callProvider;
   const run = deps.run || runTool;
-  const { main } = models(deps.env || process.env);
-  const history = sanitizeMessages(rawMessages);
-
-  if (!(await inScope(history, deps))) return { reply: REFUSAL, in_scope: false };
-
   const messages = [{ role: 'system', content: systemPrompt() }, ...history];
   let retriedToolCall = false;
 
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
     let result;
     try {
-      result = await call({ model: main, messages, tools: GROQ_TOOLS });
+      result = await call(slot, { tier: 'main', messages, tools: TOOLS });
     } catch (error) {
-      // Llama occasionally produces a malformed tool call; one retry almost always fixes it.
+      // Models occasionally produce a malformed tool call; one retry on the same slot usually fixes it.
       if (error.retryable && !retriedToolCall) { retriedToolCall = true; round -= 1; continue; }
       throw error;
     }
@@ -126,20 +123,45 @@ export async function answer(rawMessages, deps = {}) {
     if (!message) throw Object.assign(new Error('AI service error'), { status: 502, code: 'assistant_upstream_error' });
 
     const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    if (!calls.length) return { reply: finalText(message.content), in_scope: true };
+    if (!calls.length) return finalText(message.content);
 
     messages.push({ role: 'assistant', content: message.content || '', tool_calls: calls });
     for (const toolCall of calls.slice(0, MAX_CALLS_PER_ROUND)) {
       const data = await run(toolCall?.function?.name, parseArgs(toolCall?.function?.arguments));
       messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(data) });
     }
-    // Any extra calls beyond the cap still need a reply so the conversation stays valid.
+    // Calls beyond the cap still need a reply so the conversation stays valid.
     for (const skipped of calls.slice(MAX_CALLS_PER_ROUND)) {
       messages.push({ role: 'tool', tool_call_id: skipped.id, content: JSON.stringify({ error: 'Too many tool calls at once' }) });
     }
   }
 
   // Out of rounds: ask for the best answer using the data already gathered, with no more tools.
-  const last = await call({ model: main, messages });
-  return { reply: finalText(last?.choices?.[0]?.message?.content), in_scope: true };
+  const last = await call(slot, { tier: 'main', messages });
+  return finalText(last?.choices?.[0]?.message?.content);
+}
+
+export async function answer(rawMessages, deps = {}) {
+  const history = sanitizeMessages(rawMessages);
+  const slots = deps.slots || buildSlots(deps.env || process.env);
+  if (!slots.length) throw Object.assign(new Error('AI assistant is not configured'), { status: 503, code: 'assistant_not_configured' });
+
+  // Skip slots that failed recently, unless every slot is cooling down (then try them all anyway).
+  const live = slots.filter(slot => !isCooling(slot));
+  const order = live.length ? live : slots;
+
+  let inScopeVerdict = null; // decided once; a fallback slot does not repeat the gatekeeper
+  let lastError;
+  for (const slot of order) {
+    try {
+      if (inScopeVerdict === null) inScopeVerdict = await inScope(history, slot, deps);
+      if (!inScopeVerdict) return { reply: REFUSAL, in_scope: false };
+      return { reply: await converse(history, slot, deps), in_scope: true, provider: slot.provider };
+    } catch (error) {
+      lastError = error;
+      markFailure(slot, error);
+      console.warn(`Assistant slot ${slot.id} failed (${error.code || 'error'}); trying the next one.`);
+    }
+  }
+  throw lastError;
 }
